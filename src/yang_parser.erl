@@ -8,90 +8,83 @@
 -module(yang_parser).
 
 -export([parse/1, parse/2]).
+-export([validate/1, validate/2]).
 -export([fold/3,fold/4]).
 -export([get_last_arg/2, get_first_arg/2]).
 -export([empty/1, empty/2]).
 
+%% Test & Performance
 -export([perf/0, perf/1, perf/3]).
 -export([perf_file/0]).
 -export([prof/0, prof/1, prof/3]).
 
 -import(lists, [reverse/1]).
 
-
-perf() ->
-    perf([{chunk_size,16*1024}]).
-perf(Opts) ->
-    perf(perf_file(), Opts, 100).
-
-perf(File,Opts,N) ->
-    T0 = os:timestamp(),
-    loop(File,Opts,N),
-    T1 = os:timestamp(),
-    (N/timer:now_diff(T1,T0))*1000000.
-
-perf_file() ->
-    filename:join([code:priv_dir(yang),"modules","ietf","RMON-MIB.yang"]).
-
-prof() ->
-    prof([{chunk_size,16*1024}]).
-prof(Opts) ->
-    File = filename:join([code:priv_dir(yang),"modules","ietf",
-			  "RMON-MIB.yang"]),
-    prof(File, Opts, 1).
-
-prof(File,Opts,N) ->
-    T0 = os:timestamp(),
-    fprof:trace(start),
-    loop(File,Opts,N),
-    fprof:trace(stop),
-    T1 = os:timestamp(),
-    (N/timer:now_diff(T1,T0))*1000000.
-
-loop(_File,_Opts,0) ->
-    ok;
-loop(File,Opts,I) ->
-    {ok,_Ts} = parse(File,Opts),
-    loop(File,Opts,I-1).
-
-%%
-%% Scan everything collect nothing
-%%
-empty(File) ->
-    empty(File,[]).
-
-empty(File,Opts) ->
-    Fun = fun(_Key,_Ln,_Arg,_,Acc) -> 
-		  {true,Acc}
-	  end,
-    fold(Fun, [], File, Opts).
+-type option() :: {chunk_size, pos_integer()} | {atom(),any()}.
+-type stmt_name() :: atom() | binary().
+-type stmt_arg()  :: atom() | string() | binary().
+-type statement() :: {stmt_name(),integer(),stmt_arg(),[statement()]}.
 
 %%
 %% @doc
 %%    Parse and collect all statements
 %% @end
 %%
+-spec parse(File::string()) ->
+		   {ok,[statement()]} |
+		   {error,any()}.
+
 parse(File) ->
     parse(File,[]).
 
+-spec parse(File::string(), Opts::[option()]) ->
+		   {ok,[statement()]} |
+		   {error,any()}.
+
 parse(File,Opts) ->
     Fun = fun(Key,Ln,Arg,Acc0,Acc) ->
-		  %% TEST!
 		  Stmts = reverse(Acc0),
-		  case yang_validate:is_valid(Key,Stmts) of
-		      true ->
-			  ok;
-		          %% io:format("~s OK\n", [Key]);
-		      false ->
-			  io:format("error: ~s invalid\n", [Key])
-		  end,
 		  {true,[{Key,Ln,Arg,Stmts}|Acc]}
 	  end,
     fold(Fun, [], File, Opts).
 
 %%
-%% Example: get last statement arg statement
+%% @doc
+%%    Parse and validate and collect all statements
+%% @end
 %%
+-spec validate(File::string()) ->
+		      {ok,[statement()]} |
+		      {error,any()}.
+
+validate(File) ->
+    validate(File,[]).
+
+-spec validate(File::string(), Opts::[option()]) ->
+		      {ok,[statement()]} |
+		      {error,any()}.
+
+validate(File,Opts) ->
+    Fun = fun(Key,Ln,Arg,Acc0,Acc) ->
+		  Stmts = reverse(Acc0),
+		  case yang_validate:is_valid(Key,Stmts) of
+		      true -> 
+			  ok;
+		      false ->
+			  io:format("~s:~w: ~s invalid statement\n", 
+				    [File,Ln,Key])
+		  end,
+		  {true,[{Key,Ln,Arg,Stmts}|Acc]}
+	  end,
+    fold(Fun, [], File, Opts).
+
+%% @doc
+%%     Get last statement arg statement (Example)
+%% @end
+-spec get_last_arg(Stmt::stmt_arg(), File::string()) ->
+			  {ok,stmt_arg()} |
+			  {error,any()}.
+			  
 get_last_arg(Stmt,File) ->
     Fun = fun(Stmt0,_Ln,Arg,_,_) when Stmt0 =:= Stmt -> 
 		  {true,Arg};
@@ -100,6 +93,13 @@ get_last_arg(Stmt,File) ->
 	  end,
     fold(Fun, <<>>, File, []).
 
+%% @doc
+%%     Get first statement arg statement (Example)
+%% @end
+-spec get_first_arg(Stmt::stmt_arg(), File::string()) ->
+			   {ok,stmt_arg()} |
+			   {error,any()}.
+
 get_first_arg(Stmt,File) ->
     Fun = fun(Stmt0,_Ln,Arg,_,_) when Stmt0 =:= Stmt ->
 		  {ok,Arg};  %% terminate at first sight
@@ -107,10 +107,20 @@ get_first_arg(Stmt,File) ->
 	  end,
     fold(Fun, <<>>, File, []).
 
-
 %% @doc
-%% Fold function Fun over YANG statements in a file
+%%    Fold function Fun over YANG statements in a file
+%%    Function callback return values:
+%%       {true, Acc'}   - continue with Acc1
+%%       true           - continue with Acc
+%%       {ok, Reply}    - reply {ok,Reply}
+%%       {error,Reason} - reply {error,Reason}
+%%
 %% @end
+-spec fold(Fun::(fun((Key::stmt_name(),Ln::integer(),Arg::stmt_arg(),
+		      Acc0::any(), Acc::any()) ->
+			    {true,any()} | true | {ok,any()} | {error,any()})),
+	   Acc0::any(), File::string()) ->
+		  {ok,any()} | {error,any()}.		  
 
 fold(Fun,Acc0,File) ->
     fold(Fun,Acc0,File,[]).
@@ -192,7 +202,7 @@ fold_stmt_list(Key,Ln,Arg,Fun,Acc,Acc0,Scan,I) ->
 		    Result
 	    end;
 	eof ->
-	    {error,{Ln,"statment ~s not terminated", [Key]}};
+	    {error,{Ln,"statement ~s not terminated", [Key]}};
 	{Token={word,Ln1,_}, _Scan1} ->
 	    {error,{Ln1,"syntax error near ~w",[Token]}};
 	{Token={string,Ln1,_}, _Scan1} ->
@@ -296,4 +306,53 @@ other_keyword(Arg) ->
 	_ -> list_to_binary(Arg)
     end.
 
+%%
+%% Test / Performance
+%%
 
+perf() ->
+    perf([{chunk_size,16*1024}]).
+perf(Opts) ->
+    perf(perf_file(), Opts, 100).
+
+perf(File,Opts,N) ->
+    T0 = os:timestamp(),
+    loop(File,Opts,N),
+    T1 = os:timestamp(),
+    (N/timer:now_diff(T1,T0))*1000000.
+
+perf_file() ->
+    filename:join([code:priv_dir(yang),"modules","ietf","RMON-MIB.yang"]).
+
+prof() ->
+    prof([{chunk_size,16*1024}]).
+prof(Opts) ->
+    File = filename:join([code:priv_dir(yang),"modules","ietf",
+			  "RMON-MIB.yang"]),
+    prof(File, Opts, 1).
+
+prof(File,Opts,N) ->
+    T0 = os:timestamp(),
+    fprof:trace(start),
+    loop(File,Opts,N),
+    fprof:trace(stop),
+    T1 = os:timestamp(),
+    (N/timer:now_diff(T1,T0))*1000000.
+
+loop(_File,_Opts,0) ->
+    ok;
+loop(File,Opts,I) ->
+    {ok,_Ts} = parse(File,Opts),
+    loop(File,Opts,I-1).
+
+%%
+%% Scan everything collect nothing
+%%
+empty(File) ->
+    empty(File,[]).
+
+empty(File,Opts) ->
+    Fun = fun(_Key,_Ln,_Arg,_,Acc) -> 
+		  {true,Acc}
+	  end,
+    fold(Fun, [], File, Opts).

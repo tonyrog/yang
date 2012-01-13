@@ -1,0 +1,109 @@
+/*
+ *  Model of analog value reporting
+ * 
+ *  Notification support:
+ *
+ *  A analog value is notified:
+ *  if upper-limit-exceeded  AND  (calc-value > upper-limit)
+ *  if below-lower-limit     AND  (calc-value < lower-limit)
+ *  if changed-by-more-than-delta AND abs(calc-value-calc-value') > delta
+ *  if changed-by-more-than-negative-delta AND (calc-value < calc-value') AND
+ *              (calc-value' - calc-value) > neg-delta
+ *  if changed-by-more-than-positive-delta AND (calc-value > calc-value') AND
+ *              (calc-value - calc-value') > pos-delta
+ *
+ *  calc-value' is the previos value on calc-value
+ * 
+ *  FIXME: add configurable filtering support, mean value calculation
+ *         spike filtering support, interval etc.
+ */
+module fl-analog {
+    namespace "http://feuerlabs.com/ns/fl-analog";
+    prefix "an";
+
+    typedef trigger-type {
+    	type union {
+	    type uint8;
+	    type bits {
+		bit upper-limit-exceeded { 
+		    position 0; 
+		}
+		bit below-lower-limit {
+		    position 1;
+		}
+		bit changed-by-more-than-delta {
+		    position 2;
+		}
+		bit changed-by-more-than-negative-delta {
+		    position 3;
+		}
+		bit changed-by-more-than-positive-delta {
+		    position 4;
+		}
+	    }
+	}
+    }
+    
+    container analog-16 {
+
+	description "Analog value settings.
+                     The analog value is streamed when the trigger-selection
+                     is fullfilled.";
+
+	leaf trigger-selection {
+	    type an:trigger-type;
+	    description "select notification trigger";
+	}
+
+	leaf scale {
+	    type int32;
+	    default 1;
+	}
+
+	leaf offset {
+	    type int32;
+	    default 0;
+	}
+
+	leaf value {
+	    type uint16;
+	    config false;
+	    // event-stream true;  could be a way of declaring event streams
+	    description "The analog value in full range, note that if
+                         10 bit analog values are used, they must be
+                         scaled to 16 bit by, for example, a shift operation.";
+	}
+
+	leaf calc-value {
+	    type int32;
+	    config false;
+	    description "The last scaled value: value*scale + offset";
+	}
+
+	leaf upper-limit {
+	    type int32;
+	    description "Upper limit for trigger selection on calc-value";
+	}
+
+	leaf lower-limit {
+	    type int32;
+	    description "Lower limit for trigger selection on calc-value";
+	}
+
+	leaf delta {
+	    type uint32;
+	}
+
+	leaf neg-delta {
+	    type uint32;
+	}
+
+	leaf pos-delta {
+	    type uint32;
+	}
+	
+    }
+}
+    
+	
+    
