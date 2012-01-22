@@ -284,7 +284,14 @@ stmt_keyword(Name) ->
 	"when" -> 'when';
 	"yang-version" -> 'yang-version';
 	"yin-element" -> 'yin-element';
-	_ -> list_to_binary(Name)   %% save it as binay
+	_ ->
+	    case string:chr(Name, $:) of
+		0 ->
+		    list_to_binary(Name);   %% save it as binay
+		I ->
+		    {Prefix,[$:|Name1]} = lists:split(I-1,Name),
+		    {list_to_binary(Prefix),list_to_binary(Name1)}
+	    end
     end.
 
 other_keyword(Arg) ->

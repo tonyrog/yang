@@ -166,6 +166,16 @@ wsp(<<>>,L,C,S) ->
 	Error -> Error
     end.
 
+word(B0 = <<$/,$/,_B/binary>>,Acc,L,C,S) ->
+    word_(B0,Acc,L,C,S);
+word(B0 = <<$/,$*,_B/binary>>,Acc,L,C,S) ->
+    word_(B0,Acc,L,C,S);    
+word(<<$/>>,Acc,L,C,S) ->
+    case read(S) of
+	{ok,B} -> word(<<$/,B/binary>>,Acc,L,C,S);
+	eof -> eof;
+	Error -> Error
+    end;
 word(B0 = <<A,B/binary>>,Acc,L,C,S) ->
     case A of
 	$\s -> word_(B,Acc,L,C+1,S);
