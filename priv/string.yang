@@ -1,0 +1,36 @@
+/* test of strings */
+
+module string-test {
+       namespace "http://feuerlabs.com/ns/test";
+       prefix "fl";
+/*
+12345678901234567890123456789012345678901234567890123456789012345678901234567890
+*/
+
+// there are two space characters after 456!
+description "123
+              456  
+               789";
+description 
+" ABC
+  DEF
+  GHI";
+
+description "123
+                456
+                   789
+" + "
+       ABC
+       DEF
+       GHI
+";
+
+
+// back quote
+
+description "\n";
+description "\t";
+description "\"";
+description "\\";
+description "\x";
+}
