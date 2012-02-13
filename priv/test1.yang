@@ -1,0 +1,12 @@
+
+module foo {
+       namespace "http://feuerlabs.com/ns/test";
+       prefix "fl";
+
+       description 
+       "one" + 
+       /* comment 1 */
+       "two" + 
+       /* comment 2 */
+       "end";
+}

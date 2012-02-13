@@ -563,6 +563,6 @@ static void yang_scan_unload(ErlNifEnv* env, void* priv_data)
 
 
 
-ERL_NIF_INIT(yang_scan5, yang_scan_funcs,
+ERL_NIF_INIT(yang_scan_nif, yang_scan_funcs,
 	     yang_scan_load, yang_scan_reload, 
 	     yang_scan_upgrade, yang_scan_unload)
