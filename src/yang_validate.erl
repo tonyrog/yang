@@ -149,6 +149,18 @@ expand_arg(Name) when is_atom(Name) ->
     yang_re:expand(Name, Lookup).
 
 %%
+%%
+%%
+test_match(Arg, String) ->
+    A0 = yang_validate:expand_arg(Arg),
+    A1 = yang_re:format(A0),
+    A2 = lists:flatten(["^",A1,"$"]),
+    R1 = re:run(String, A2, [{capture,first,index},dotall]),
+    {ok,RE} = re:compile(A2, [dotall]),
+    R2 = re:run(String, RE, [{capture,first,index}]),
+    {R1,R2}.
+
+%%
 %% Process statement list and count how many times each
 %% statement type occure return a dictionary with all counts
 %%
@@ -185,6 +197,16 @@ context_option(Key, {_,_File,_Line,Options}) ->
 
 context_option(Key, {_,_File,_Line,Options}, Default) ->
     proplists:get_value(Key, Options, Default).
+
+%%
+%% Statement name, return something that can be formatted with ~s
+%%
+statement_name(Stmt) when is_atom(Stmt) ->
+    Stmt;
+statement_name(Stmt) when is_binary(Stmt) ->
+    Stmt;
+statement_name({Prefix,Stmt}) ->
+    <<Prefix/binary, Stmt/binary>>.
 
 %%
 %% Transform statment names into context dependent statement names
@@ -240,70 +262,91 @@ is_valid_(Context,Arg,List) ->
 %%    dict:fold(fun(Key,Value,_Acc) ->
 %%		      io:format("  ~p: count=~w\n", [Key,Value])
 %%	      end, ok, Cnt),
-    {RuleName,ArgExpr,Rule} = rule(context_key(Context)),
+    {_RuleName,ArgName,Rule} = rule(context_key(Context)),
     List1 = validate_rule(Context,Rule,List,Cnt),
-    %% FIXME: verify that remaining statments in list are unknown
     List2 = remove_elements(length(List1), ?UNKNOWN, Context, List1),
     %% Check argument
-    Compiled =
-	case get({re,RuleName}) of
-	    undefined -> 
-		Expanded = expand_arg(ArgExpr),
-		REString = yang_re:format(Expanded),
-		try re:compile(REString) of
-		    {ok,RE} ->
-			%% ugly caching - better variant?
-			put({re,RuleName}, RE),
-			RE;
-		    {error,Reason} ->
-			io:format("~s:~w: internal error, can not compile expression for ~p, reason: ~p\n",
-				  [context_file(Context),
-				   context_line(Context),
-				   context_statement(Context),
-				   Reason]),
-			{ok,RE} = re:compile(".*"),
-			%% make wolrld a better place
-			put({re,RuleName}, RE),
-			RE
-		catch
-		    error:Reason ->
-			io:format("~s:~w: internal error, can not compile expression for ~p, reason: ~p\n",
-				  [context_file(Context),
-				   context_line(Context),
-				   context_statement(Context),
-				   Reason]),
-			{ok,RE} = re:compile(".*"),
-			%% make wolrld a better place
-			put({re,RuleName}, RE),
-			RE
-		end;
-	    RE ->
-		RE
-	end,
-    BinArg = if is_atom(Arg) ->
-		     list_to_binary(atom_to_list(Arg));
-		is_binary(Arg) ->
-		     Arg
-	     end,
-    RR = 
-	case re:run(BinArg, Compiled) of
-	    nomatch ->
-		io:format("~s:~w: invalid argument to statement ~p, does not have the form ~p\n", 
-			  [context_file(Context),
-			   context_line(Context),
-			   context_statement(Context),
-			   ArgExpr]),
-		false;
-	    {match,_} ->
-		true
-	end,
+    RR = is_valid_argument(Context,ArgName,Arg),
     if List2 =:= [] ->
 	    RR;
        true ->
-	    %% print this nicely ...?
-	    io:format("REMAIN: ~p\n", [List2]),
+	    lists:foreach(
+	      fun({Stmt,Ln,_Arg,_Stmts}) ->
+		      io:format("~s:~w: statement '~s' not valid in context '~s':~w\n",
+				[context_file(Context), Ln,
+				 statement_name(Stmt), 
+				 statement_name(context_statement(Context)),
+				 context_line(Context)])
+	      end, List2),
 	    false
     end.
+
+is_valid_argument(Context,ArgName,Arg) ->
+    RE = make_re(Context,ArgName),
+    BinArg = if is_atom(Arg) ->
+		     list_to_binary(atom_to_list(Arg));
+		is_binary(Arg) ->
+		     Arg;
+		Arg =:= [] ->
+		     <<>>
+	     end,
+    case re:run(BinArg, RE, [{capture,first,index}]) of
+	nomatch ->
+	    io:format("BinArg: ~p\n", [BinArg]),
+	    %% io:format("RE: ~s = ~p\n", [ArgName, RE]),
+	    io:format("~s:~w: invalid argument to statement ~p, does not have the form ~p\n", 
+		      [context_file(Context),
+		       context_line(Context),
+		       context_statement(Context),
+		       ArgName]),
+	    false;
+	{match,_} ->
+	    true
+    end.
+
+%%
+%% Use process dictionary as a regular epression cache
+%% Practical but may (as always) bite back.
+%%
+make_re(Context,ArgName) when is_atom(ArgName) ->
+    case get({re,ArgName}) of %% check string 
+	undefined ->
+	    Expanded = expand_arg(ArgName),
+	    RE_Expr0 = yang_re:format(Expanded),
+	    RE_Expr1 = lists:flatten(["^",RE_Expr0,"$"]),
+	    %% put({restr,ArgName}, RE_Expr1),  %% debugging
+	    try re:compile(RE_Expr1,[dotall]) of
+		{ok,RE} ->
+		    %% ugly caching - better variant?
+		    put({re,ArgName}, RE),
+		    RE;
+		{error,Reason} ->
+		    io:format("~s:~w: internal error, can not compile expression for ~p, reason: ~p\n",
+			      [context_file(Context),
+			       context_line(Context),
+			       context_statement(Context),
+			       Reason]),
+		    {ok,RE} = re:compile("^(.*)$",[dotall]),
+		    %% make world a better place
+		    put({re,ArgName}, RE),
+		    RE
+	    catch
+		error:Reason ->
+		    io:format("~s:~w: internal error, can not compile expression for ~p, reason: ~p\n",
+			      [context_file(Context),
+			       context_line(Context),
+			       context_statement(Context),
+			       Reason]),
+		    {ok,RE} = re:compile("^(.*)$",[dotall]),
+		    %% make world a better place
+		    put({re,ArgName}, RE),
+		    RE
+	    end;
+	RE ->
+	    RE
+    end.
+    
+
 
 validate_rule(Context,R,List,Cnt) ->
     case R of
@@ -458,7 +501,8 @@ canonical_remove_elements(N, Name, Context, [{Stmt,Ln,Arg,_}|List]) ->
 	    canonical_remove_elements(N, Name, Context, List);
        true ->
 	    io:format("~s:~w: warning: statement '~s' not in canoical order, for context ~p:~w\n",
-		      [context_file(Context), Ln, Key,
+		      [context_file(Context), Ln, 
+		       statement_name(Stmt),
 		       context_statement(Context),
 		       context_line(Context)
 		      ]),
@@ -738,22 +782,36 @@ rule('typedef') ->
 		 ])};
 rule('type') ->
     {'type',identifier_ref,
-     ?CHOICE(0,none‚,[
-		      ?ALL(0,none,[
-				   ?Y(1,1,'fraction-digits'), %% decimal64
-				   ?Y(0,1,range)   %% numerical
-				  ]),
-		      ?Y(1,1,range),  %% numerical
-		      ?ALL(0,none,[
-				   ?Y(0,1,'length'),
-				   ?Y(0,n,'pattern')]), %% string 
-		      ?Y(1,n,'enum'),   %% enum
-		      ?Y(1,1,'path'),   %% leafref FIXED: RFC6020 - Errata ID 2949
-		      ?Y(1,1,'base'),   %% identityref
-		      ?Y(0,1,'require-instance'),  %% instance-identifier
-		      ?Y(1,n,'bit'),               %% bits
-		      ?Y(1,n,'type')               %% union
-		     ])};
+     ?ALL(0,none‚,[
+		   ?Y(0,1,'fraction-digits'), %% decimal64
+		   ?Y(0,1,'range'),   %% numerical
+		   ?Y(0,1,'length'),
+		   ?Y(0,n,'pattern'),  %% string 
+		   ?Y(0,n,'enum'),   %% enum
+		   ?Y(0,1,'path'),   %% leafref FIXED: RFC6020 - Errata ID 2949
+		   ?Y(0,1,'base'),   %% identityref
+		   ?Y(0,1,'require-instance'),  %% instance-identifier
+		   ?Y(0,n,'bit'),               %% bits
+		   ?Y(0,n,'type')               %% union
+		  ])};
+    %% How I would like to have it
+    %% {'type',identifier_ref,
+    %%  ?CHOICE(0,none‚,[
+    %% 		      ?ALL(0,none,[
+    %% 				   ?Y(1,1,'fraction-digits'), %% decimal64
+    %% 				   ?Y(0,1,range)   %% numerical
+    %% 				  ]),
+    %% 		      ?Y(1,1,range),  %% numerical
+    %% 		      ?ALL(0,none,[
+    %% 				   ?Y(0,1,'length'),
+    %% 				   ?Y(0,n,'pattern')]), %% string 
+    %% 		      ?Y(1,n,'enum'),   %% enum
+    %% 		      ?Y(1,1,'path'),   %% leafref FIXED: RFC6020 - Errata ID 2949
+    %% 		      ?Y(1,1,'base'),   %% identityref
+    %% 		      ?Y(0,1,'require-instance'),  %% instance-identifier
+    %% 		      ?Y(1,n,'bit'),               %% bits
+    %% 		      ?Y(1,n,'type')               %% union
+    %% 		     ])};
 rule('range') ->
     {'range',range_arg,
      ?ALL(0,none,[
@@ -1184,16 +1242,16 @@ arg(empty)        -> {const,""};
 arg(prefix) ->       identifier;
 arg(current_function_invocation) ->
     {',',[{const,"current"},optwsp,{const,"\\("},optwsp,{const,"\\)"}]};
-arg(string) ->       
-    {'*',{dot}};
-arg(identifier) ->   
+arg(string) ->
+    {re, ".*"};
+arg(identifier) ->
     {re,"(?!(?i)xml)[A-Za-z_](\\w|-|\\.)*"};
 arg(identifier_ref) ->
     {',',[{'?',{',',[prefix,{const,":"}]}}, identifier]};
 arg(range_arg) ->
     {',',[range_part,
 	       {'*',{',',
-			 [optsep,{const,"|"},
+			 [optsep,{const,"\\|"},
 			  optsep,range_part]}}]};
 arg(range_part) ->
     {',',[range_boundary,
@@ -1205,19 +1263,18 @@ arg(range_boundary) ->
 arg(length_arg) ->
     {',',[length_part,
 	  {'*',{',',
-		[optsep,{const,"|"},optsep,length_part]}}]};
-arg(length_part) -> 
+		[optsep,{const,"\\|"},optsep,length_part]}}]};
+arg(length_part) ->
     {',',[length_boundary,
 	  {'?',{',',
-		[optsep,{const,".."},optsep,length_boundary]}}]};
+		[optsep,{const,"\\.\\."},optsep,length_boundary]}}]};
 arg(length_boundary) ->
     {'|',[{const,"min"},{const,"max"},non_negative_integer_value]};
 
 arg(date) -> 
     {re,"\\d{4}-\\d{2}-\\d{2}"};
 arg(schema_nodeid) ->
-    {'|',[absolute_schema_nodeid,
-	  descendant_schema_nodeid]};
+    {'|',[absolute_schema_nodeid, descendant_schema_nodeid]};
 arg(absolute_schema_nodeid) -> 
     {'+',{',',[{re,"/"},node_identifier]}};
 arg(descendant_schema_nodeid) ->
@@ -1263,17 +1320,20 @@ arg(rel_path_keyexpr) ->
 		 {'*',wsp},{const,"/"},optwsp]}},
 	  node_identifier]};
 arg(fraction_digits_arg) ->  {re,"(1[0-8]?)|[2-9]"};
-arg(position_value_arg) ->   non_negative_integer_value;
-arg(status_arg) ->           {re,"current|obsolete|deprecated"};
-arg(ordered_by_arg) ->       {re,"user|system"};
-arg(min_value) ->  non_negative_integer_value;
-arg(max_value) ->  {'|',[{const,"unbounded"},non_negative_integer_value]};
+arg(position_value_arg) ->   
+    non_negative_integer_value;
+arg(status_arg) ->           
+    {re,"current|obsolete|deprecated"};
+arg(ordered_by_arg) ->       
+    {re,"user|system"};
+arg(min_value) ->  
+    non_negative_integer_value;
+arg(max_value) ->  
+    {'|',[{const,"unbounded"},non_negative_integer_value]};
 arg(key_arg) ->
     {',',[node_identifier,{'*',{',',[sep,node_identifier]}}]};
 arg(unique_arg) ->
-    {',',[descendant_schema_nodeid,
-	  {'*',{',',
-		[sep,descendant_schema_nodeid]}}]};
+    {',',[descendant_schema_nodeid,{'*',{',',[sep,descendant_schema_nodeid]}}]};
 arg(refine_arg) ->          descendant_schema_nodeid;
 arg(uses_augment_arg) ->    descendant_schema_nodeid;
 arg(augment_arg) ->         absolute_schema_nodeid;
@@ -1412,5 +1472,3 @@ arg(sub_delims) ->
 	  {const,";"},{const,"="}]};
 arg(not_used) ->
     ok.
-
-

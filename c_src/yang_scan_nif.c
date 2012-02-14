@@ -295,7 +295,11 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 	    else {
 		if (*ptr == '/')      { ptr++; GOTO(LINE_COMMENT); }
 		else if (*ptr == '*') { ptr++; GOTO(BLOCK_COMMENT); }
-		else { obj->t_line = obj->line; GOTO(WORD); }
+		else {
+		    obj->t_line = obj->line; 
+		    add_char('/', obj);
+		    GOTO(WORD); 
+		}
 	    }
 	    SET_STATE(WSP);
 	    // FALL THROUGH

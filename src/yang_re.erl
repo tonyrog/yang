@@ -63,7 +63,6 @@
 normalize(X0) ->
     case X0 of
 	{empty} -> X0;
-	{dot}   -> X0;
 	{re,_}  -> X0;
 	{const,_} -> X0;
 	X when ?is_symbol(X) -> X;
@@ -140,7 +139,6 @@ expand(Expr) ->
 expand(Expr,Lookup) ->
     case Expr of
 	{empty} -> Expr;
-	{dot}   -> Expr;
 	{re,_}  -> Expr;
 	{const,_} -> Expr;
 	X when ?is_symbol(X) ->
@@ -221,7 +219,7 @@ format(X) ->
 
 format(X,F) ->
     case X of
-	{const,String} ->
+	{const,String} -> %% FIXME: escape when needed !!! :-)
 	    String;
 	{re,REString} ->
 	    ["(",REString,")"]; %% pre-formated expression
@@ -230,12 +228,11 @@ format(X,F) ->
 	{sequence,L} ->
 	    ["(",format_list(L,F,""),")"];
 	{closure,X1} ->
-	    [format(X1,F),"*"];
+	    ["(",format(X1,F),")*"];
 	{pclosure,X1} ->
-	    [format(X1,F),"+"];
+	    ["(",format(X1,F),")+"];
 	{optional,X1} -> 
-	    [format(X1,F),"?"];
-	{dot} -> ".";
+	    ["(",format(X1,F),")?"];
 	{empty} -> [];
 	{X1,{N,M}} when ?is_occure(N,M) ->
 	    if M =:= unbounded ->
