@@ -14,8 +14,8 @@
 
 -type line() :: pos_integer().
 
--type token() :: {string,line(),string()} |
-		 {word,line(),string()} |
+-type token() :: {string,line(),binary()} |
+		 {word,line(),binary()} |
 		 {'{',line()} |
 		 {'}',line()} |
 		 {';',line()}.
