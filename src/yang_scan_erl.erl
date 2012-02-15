@@ -1,11 +1,11 @@
 %%% @author Tony Rogvall <tony@rogvall.se>
 %%% @copyright (C) 2012, Tony Rogvall
 %%% @doc
-%%%    YANG token scanner
+%%%    YANG token scanner, reference implementation
 %%% @end
 %%% Created :  4 Jan 2012 by Tony Rogvall <tony@rogvall.se>
 
--module(yang_scan).
+-module(yang_scan_erl).
 
 -export([open/1, open/2, string/1, next/1, push_back/2, close/1]).
 -export([all/1, all/2]).
@@ -14,8 +14,8 @@
 
 -type line() :: pos_integer().
 
--type token() :: {string,line(),string()} |
-		 {word,line(),string()} |
+-type token() :: {string,line(),binary()} |
+		 {word,line(),binary()} |
 		 {'{',line()} |
 		 {'}',line()} |
 		 {';',line()}.
@@ -23,7 +23,7 @@
 
 -record(yang_scan,
 	{
-	  buffer = <<>>,   %% binary chunk
+	  buffer = [],     %% list chunk
 	  tokens = [],     %% token buffer
 	  line = 1,        %% current line number
 	  column = 1,      %% current column
@@ -136,17 +136,17 @@ next_(Scan, StringToken={string,Ln,Str1}, PlusToken) ->
 wsp(#yang_scan { buffer=B,line=L,column=C,stream=S}) ->
     wsp(B,L,C,S).
 
-wsp(<<$/,$/,B/binary>>,L,C,S) ->
+wsp([$/,$/|B],L,C,S) ->
     line_comment(B,L,C,S);
-wsp(<<$/,$*,B/binary>>,L,C,S) ->
+wsp([$/,$*|B],L,C,S) ->
     block_comment(B,L,C,S);
-wsp(<<$/>>,L,C,S) ->
+wsp([$/],L,C,S) ->
     case read(S) of
-	{ok,B} -> wsp(<<$/,B/binary>>,L,C,S);
+	{ok,B} -> wsp([$/|B],L,C,S);
 	eof -> eof;
 	Error -> Error
     end;
-wsp(<<A,B/binary>>,L,C,S) ->
+wsp([A|B],L,C,S) ->
     case A of
 	$\s -> wsp(B,L,C+1,S);
 	$\t -> wsp(B,L,C+8,S);
@@ -159,27 +159,27 @@ wsp(<<A,B/binary>>,L,C,S) ->
 	$;  -> token_(B, ';',L,C+1,S);
 	_   -> word(B,[A],L,C+1,S)
     end;
-wsp(<<>>,L,C,S) ->
+wsp([],L,C,S) ->
     case read(S) of
 	{ok,B0} -> wsp(B0,L,C,S);
 	eof -> eof;
 	Error -> Error
     end.
 
-word(B0 = <<$/,$/,_B/binary>>,Acc,L,C,S) ->
+word(B0 = [$/,$/|_B],Acc,L,C,S) ->
     word_(B0,Acc,L,C,S);
-word(B0 = <<$/,$*,_B/binary>>,Acc,L,C,S) ->
+word(B0 = [$/,$*|_B],Acc,L,C,S) ->
     word_(B0,Acc,L,C,S);    
-word(<<$/>>,Acc,L,C,S) ->
+word([$/],Acc,L,C,S) ->
     case read(S) of
-	{ok,B} -> word(<<$/,B/binary>>,Acc,L,C,S);
+	{ok,B} -> word([$/|B],Acc,L,C,S);
 	eof -> eof;
 	Error -> Error
     end;
-word(B0 = <<A,B/binary>>,Acc,L,C,S) ->
+word(B0 = [A|B],Acc,L,C,S) ->
     case A of
 	$\s -> word_(B,Acc,L,C+1,S);
-	$\t -> word_(B,Acc,L,C+1,S);
+	$\t -> word_(B,Acc,L,C+8,S);
 	$\r -> word_(B,Acc,L,C,S);
 	$\n -> word_(B0,Acc,L,C,S);
 	$;  -> word_(B0,Acc,L,C,S);
@@ -187,10 +187,10 @@ word(B0 = <<A,B/binary>>,Acc,L,C,S) ->
 	$}  -> word_(B0,Acc,L,C,S);
 	_ -> word(B, [A|Acc],L,C+1,S)
     end;
-word(<<>>,Acc,L,C,S) ->
+word([],Acc,L,C,S) ->
     case read(S) of
 	{ok,B1} -> word(B1,Acc,L,C,S);
-	eof -> word_(<<>>,Acc,L,C,S);
+	eof -> word_([],Acc,L,C,S);
 	Error -> Error
     end.
 
@@ -207,7 +207,7 @@ word(<<>>,Acc,L,C,S) ->
 %%               CurrentLine,CurrentColumn,WhiteSkipFlag,Stream)
 %%
 
-dquote_string(<<$\\,A,B/binary>>,Acc,L0,C0,L,C,_W,S) ->
+dquote_string([$\\,A|B],Acc,L0,C0,L,C,_W,S) ->
     case A of
 	$n  -> dquote_string(B,[$\n|Acc],L0,C0,L,C,false,S);
 	$t  -> dquote_string(B,[$\t|Acc],L0,C0,L,C,false,S);
@@ -215,13 +215,13 @@ dquote_string(<<$\\,A,B/binary>>,Acc,L0,C0,L,C,_W,S) ->
 	$\\ -> dquote_string(B,[A|Acc],L0,L,C0,C,false,S);
 	_   -> dquote_string(B,[A,$\\|Acc],L0,C0,L,C,false,S)
     end;
-dquote_string(<<$\\>>,Acc,L0,C0,L,C,W,S) ->
+dquote_string([$\\],Acc,L0,C0,L,C,W,S) ->
     case read(S) of
-	{ok,B1} -> dquote_string(<<$\\,B1/binary>>,Acc,L0,C0,L,C,W,S);
+	{ok,B1} -> dquote_string([$\\|B1],Acc,L0,C0,L,C,W,S);
 	eof -> {error,unterminated_string};
 	Error -> Error
     end;
-dquote_string(<<A,B/binary>>,Acc,L0,C0,L,C,W,S) ->
+dquote_string([A|B],Acc,L0,C0,L,C,W,S) ->
     case A of
 	$"  ->
 	    string_(B,reverse(Acc),L0,L,C+1,S);
@@ -238,12 +238,12 @@ dquote_string(<<A,B/binary>>,Acc,L0,C0,L,C,W,S) ->
 	    if W, C =< C0 ->
 		    dquote_string(B,Acc,L0,C0,L,C+8,W,S);
 	       true ->
-		    dquote_string(B,Acc,L0,C0,L,C+8,false,S)
+		    dquote_string(B,[A|Acc],L0,C0,L,C+8,false,S)
 	    end;
 	_   ->
 	    dquote_string(B,[A|Acc],L0,C0,L,C+1,false,S)
     end;
-dquote_string(<<>>,Acc,L0,C0,L,C,W,S) ->
+dquote_string([],Acc,L0,C0,L,C,W,S) ->
     case read(S) of
 	{ok,B1} -> dquote_string(B1,Acc,L0,C0,L,C,W,S);
 	eof -> {error,unterminated_string};
@@ -256,13 +256,13 @@ dquote_string(<<>>,Acc,L0,C0,L,C,W,S) ->
 %%    scan single quoted string. 'this is such a string'
 %% @end
 
-squote_string(<<>>,Acc,L0,L,C,S) ->
+squote_string([],Acc,L0,L,C,S) ->
     case read(S) of
 	{ok,B1} -> squote_string(B1,Acc,L0,L,C,S);
 	eof -> {error,unterminated_string};
 	Error -> Error
     end;
-squote_string(<<A,B/binary>>,Acc,L0,L,C,S) ->
+squote_string([A|B],Acc,L0,L,C,S) ->
     case A of
 	$'  -> string_(B,reverse(Acc),L0,L,C+1,S);
 	$\n -> squote_string(B,[A|Acc],L0,L+1,1,S);
@@ -273,11 +273,11 @@ squote_string(<<A,B/binary>>,Acc,L0,L,C,S) ->
 %%   Skip line comment from // until \n
 %% @end
 
-line_comment(<<$\n,B/binary>>,L,_C,S) ->
+line_comment([$\n|B],L,_C,S) ->
     wsp(B,L+1,1,S);
-line_comment(<<_,B/binary>>,L,C,S) ->
+line_comment([_|B],L,C,S) ->
     line_comment(B,L,C+1,S);
-line_comment(<<>>,L,C,S) ->
+line_comment([],L,C,S) ->
     case read(S) of
 	{ok,B1} ->
 	    line_comment(B1,L,C,S);
@@ -289,20 +289,20 @@ line_comment(<<>>,L,C,S) ->
 %%   Skip block comment from /* until */
 %% @end
 
-block_comment(<<$*,$/,B/binary>>,L,C,S) ->
+block_comment([$*,$/|B],L,C,S) ->
     wsp(B,L,C+2,S);
-block_comment(<<$*>>,L,C,S) ->
+block_comment([$*],L,C,S) ->
     case read(S) of
 	{ok,B1} -> 
-	    block_comment(<<$*,B1/binary>>,L,C,S);
+	    block_comment([$*|B1],L,C,S);
 	eof -> eof;
 	Error -> Error
     end;
-block_comment(<<$\n,B/binary>>,L,_C,S) ->
+block_comment([$\n|B],L,_C,S) ->
     block_comment(B,L+1,1,S);
-block_comment(<<_,B/binary>>,L,C,S) ->
+block_comment([_|B],L,C,S) ->
     block_comment(B,L,C+1,S);
-block_comment(<<>>,L,C,S) ->
+block_comment([],L,C,S) ->
     case read(S) of
 	{ok,B1} ->
 	    block_comment(B1,L,C,S);
@@ -319,11 +319,11 @@ trim_wsp(Cs) -> Cs.
 
 
 string_(B,Str,L0,L,C,S) ->
-    {{string,L0,Str},
+    {{string,L0,list_to_binary(Str)},
      #yang_scan { buffer=B,line=L,column=C,stream=S}}.
 
 word_(B,Acc,L,C,S) ->
-    {{word,L,reverse(Acc)},
+    {{word,L,list_to_binary(reverse(Acc))},
      #yang_scan { buffer=B,line=L,column=C,stream=S}}.
 
 token_(B,Tok,L,C,S) ->
@@ -333,4 +333,8 @@ token_(B,Tok,L,C,S) ->
 read(undefined) ->
     eof;
 read({Fd,Size}) ->
-    file:read(Fd, Size).
+    case file:read(Fd, Size) of
+	{ok,Bin} -> {ok,binary_to_list(Bin)};
+	Error -> Error
+    end.
+

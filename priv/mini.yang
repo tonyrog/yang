@@ -1,0 +1,5 @@
+
+module mini {
+       namespace "http://feuerlabs.com/ns/test";
+       prefix "fl";
+}

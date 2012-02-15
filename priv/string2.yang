@@ -1,0 +1,15 @@
+/* test of strings */
+
+module string-test {
+       namespace "http://feuerlabs.com/ns/test";
+       prefix "fl";
+/*
+12345678901234567890123456789012345678901234567890123456789012345678901234567890
+*/
+//           ---12345678---
+description "123        456
+                45678912 " + "
+                              123
+                               789
+                                123";
+}
