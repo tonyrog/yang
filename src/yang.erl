@@ -7,7 +7,7 @@
 
 -module(yang).
 
--export([scan_file/1, parse_file/1, validate_file/1]).
+-export([scan_file/1, parse_file/1, validate_file/1, json_rpc/1]).
 -import(lists, [reverse/1]).
 
 scan_file(File) -> 
@@ -19,3 +19,5 @@ parse_file(File) ->
 validate_file(File) ->
     yang_parser:validate(File).
 
+json_rpc(YangFile) ->
+    yang_json:json_rpc(YangFile).
