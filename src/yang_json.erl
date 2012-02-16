@@ -34,7 +34,7 @@ imports(Data, Dir) ->
 			      %% error({cannot_import, F, no_such_module})
 			      Acc
 		      end;
-		  Error ->
+		  _Error ->
 		      %% error({cannot_import, F, Error})
 		      Acc
 	      end;
@@ -67,12 +67,13 @@ rpc_params([{uses,_,G,_}|T], Data, Imports) ->
 	[Params] ->
 	    rpc_params(Params, Data, Imports) ++ rpc_params(T, Data, Imports)
     end;
-rpc_params([{leaf,_,N,_}|T], Data, Imports) ->
-    [{binary_to_list(N), ""} | rpc_params(T, Data, Imports)];
-rpc_params([{anyxml,_,N,_}|T], Data, Imports) ->
-    [{binary_to_list(N), ""} | rpc_params(T, Data, Imports)];
+rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
+    [{binary_to_list(N), "", descr(Is)} | rpc_params(T, Data, Imports)];
+rpc_params([{anyxml,_,N,Is}|T], Data, Imports) ->
+    [{binary_to_list(N), "", descr(Is)} | rpc_params(T, Data, Imports)];
 rpc_params([{list,_,N,Items}|T], Data, Is) ->
-    [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]}} | rpc_params(T, Data, Is)];
+    [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]}, descr(Items)}
+     | rpc_params(T, Data, Is)];
 rpc_params([_|T], Data, Is) ->
     rpc_params(T, Data, Is);
 rpc_params([], _, _) ->
@@ -96,11 +97,36 @@ markdown([]) ->
 
 markdown_rpcs([{RPC, {{request, Req}, {reply, Rep}}} | T]) ->
     ["### RPC: ", RPC, "\n\n",
-     "#### Request\n", "```json\n", pp_json(Req), "\n```\n",
-     "#### Reply\n", "```json\n", pp_json(Rep), "\n```\n\n" |
-     markdown_rpcs(T)];
+     "#### Request\n", "```json\n", pp_json(Req), "\n```\n\n",
+     markdown_descriptions(Req), "\n\n",
+     "#### Reply\n", "```json\n", pp_json(Rep), "\n```\n\n",
+     markdown_descriptions(Rep), "\n\n" | markdown_rpcs(T)];
 markdown_rpcs([]) ->
     [].
+
+markdown_descriptions(Msg) ->
+    case [X || {_,Dx} = X <- collect_descriptions(Msg, orddict:new()),
+	       Dx =/= []] of
+	[] -> [];
+	[{K,D}|Tail] ->
+	    ["**descriptions**\n",
+	     "<dl><dt>", K, "</dt>\n", "<dd>", D, "</dd>",
+	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1, "</dd>"] || {K1,D1} <- Tail],
+	     "\n</dl>\n\n"]
+    end.
+
+collect_descriptions({struct, L}, Acc) ->
+    lists:foldl(fun collect_descriptions/2, Acc, L);
+collect_descriptions({array, L}, Acc) ->
+    lists:foldl(fun collect_descriptions/2, Acc, L);
+collect_descriptions({K,V,D}, Acc) ->
+    collect_descriptions(V, orddict:store(K, D, Acc));
+collect_descriptions({_K,V}, Acc) ->
+    collect_descriptions(V, Acc);
+collect_descriptions(_, Acc) ->
+    Acc.
+
+
 
 pp_json(Json) ->
     pp_json(Json, 0).
@@ -119,10 +145,24 @@ pp_json(V, _I) when is_binary(V); is_list(V) ->
     io_lib:fwrite("\"~s\"", [V]);
 pp_json(V, _I) when is_integer(V) ->
     ["\"", integer_to_list(V), "\""];
+pp_json({K,V,_}, I) ->
+    pp_json_(K, V, I);
 pp_json({K,V}, I) ->
+    pp_json_(K, V, I).
+
+
+pp_json_(K,V,I) ->
     Part1 = ["\"", K, "\": "],
     I1 = I + iolist_size(Part1),
     [Part1, pp_json(V, I1)].
+
+descr(L) ->
+    case lists:keyfind(description, 1, L) of
+	false ->
+	    "";
+	{_, _, B,_} ->
+	    binary_to_list(B)
+    end.
 
 i(I) ->
     lists:duplicate(I,$\s).
