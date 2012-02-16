@@ -72,7 +72,7 @@ rpc_params([{leaf,_,N,_}|T], Data, Imports) ->
 rpc_params([{anyxml,_,N,_}|T], Data, Imports) ->
     [{binary_to_list(N), ""} | rpc_params(T, Data, Imports)];
 rpc_params([{list,_,N,Items}|T], Data, Is) ->
-    [{binary_to_list(N), {array, rpc_params(Items, Data, Is)}} | rpc_params(T, Data, Is)];
+    [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]}} | rpc_params(T, Data, Is)];
 rpc_params([_|T], Data, Is) ->
     rpc_params(T, Data, Is);
 rpc_params([], _, _) ->
