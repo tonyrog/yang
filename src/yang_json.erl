@@ -31,10 +31,12 @@ imports(Data, Dir) ->
 			  [ImpData] ->
 			      orddict:store(Pfx, ImpData, Acc);
 			  [] ->
-			      error({cannot_import, F, no_such_module})
+			      %% error({cannot_import, F, no_such_module})
+			      Acc
 		      end;
 		  Error ->
-		      error({cannot_import, F, Error})
+		      %% error({cannot_import, F, Error})
+		      Acc
 	      end;
 	 (_, Acc) ->
 	      Acc
