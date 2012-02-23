@@ -77,7 +77,6 @@ rpc_params([{uses,_,G,_}|T], Data, Imports) ->
 			       {orddict:fetch(Pfx, Imports), G1}
 		       end,
     TypeDefs = [{typedef,L,Type,Def} || {typedef,L,Type,Def} <- Where],
-    io:fwrite("TypeDefs = ~p~n", [TypeDefs]),
     Data1 = Data ++ TypeDefs,
     case [L || {grouping,_,Grp,L} <- Where,
 	       Grp == GrpName] of
@@ -151,20 +150,21 @@ markdown_descriptions(Msg) ->
 	     "\n</dl>\n\n"]
     end.
 
-collect_descriptions(Msg, Acc) ->
-    Res = collect_descriptions_(Msg, Acc),
-    io:fwrite("descriptions(~p) = ~p~n", [Msg, Res]),
-    Res.
-
-collect_descriptions_({struct, L}, Acc) ->
-    lists:foldl(fun collect_descriptions_/2, Acc, L);
-collect_descriptions_({array, L}, Acc) ->
-    lists:foldl(fun collect_descriptions_/2, Acc, L);
-collect_descriptions_({K,V,D,T}, Acc) ->
-    collect_descriptions_(V, orddict:store(K, {D,T}, Acc));
-collect_descriptions_({_K,V}, Acc) ->
-    collect_descriptions_(V, Acc);
-collect_descriptions_(_, Acc) ->
+collect_descriptions({struct, L}, Acc) ->
+    lists:foldl(fun collect_descriptions/2, Acc, L);
+collect_descriptions({array, L}, Acc) ->
+    lists:foldl(fun collect_descriptions/2, Acc, L);
+collect_descriptions({K,{array,L},D,_}, Acc) ->
+    lists:foldl(fun collect_descriptions/2,
+		orddict:store(K, {D,"array"}, Acc), L);
+collect_descriptions({K,{struct,L},D,_}, Acc) ->
+    lists:foldl(fun collect_descriptions/2,
+		orddict:store(K, {D,"object"}, Acc), L);
+collect_descriptions({K,V,D,T}, Acc) ->
+    collect_descriptions(V, orddict:store(K, {D,T}, Acc));
+collect_descriptions({_K,V}, Acc) ->
+    collect_descriptions(V, Acc);
+collect_descriptions(_, Acc) ->
     Acc.
 
 
@@ -211,8 +211,6 @@ type(Is, Data, Imports) ->
 	{type, _, T, _} = Type ->
 	    case binary:split(T, <<":">>) of
 		[Pfx, Ts] ->
-		    io:fwrite("trying to expand type ~s...~nData = ~p~n", [Ts, Data]),
-
 		    ImpData = orddict:fetch(Pfx, Imports),
 		    case [D1 || {typedef,_,T1,D1} <- ImpData, Ts == T1] of
 			[Def] ->
