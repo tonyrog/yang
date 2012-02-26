@@ -3,9 +3,25 @@
 
 json_rpc(YangFile) ->
     Dir = filename:dirname(YangFile),
-    case yang:parse_file(YangFile) of
-	{ok, Y} ->
-	    each_module(fun to_json_rpc/2, Y, Dir);
+    case read(YangFile) of
+	{{ok, Y}, Ext} ->
+	    each_module(fun to_json_rpc/2, Y, {Dir, Ext});
+	{Error, _} ->
+	    Error
+    end.
+
+read(F) ->
+    read(F, filename:extension(F)).
+
+read(F, ".yang") ->
+    {yang:parse_file(F), ".yang"};
+read(F, ".eterm") ->
+    {read_eterm(F), ".eterm"}.
+
+read_eterm(F) ->
+    case file:read_file(F) of
+	{ok, Bin} ->
+	    {ok, binary_to_term(Bin)};
 	Error ->
 	    Error
     end.
@@ -28,11 +44,11 @@ to_json_rpc(Data, Dir) ->
 	      Acc
       end, [], Data).
 
-imports(Data, Dir) ->
+imports(Data, {Dir,Ext}) ->
     lists:foldl(
       fun({import,_,F,[{prefix,_,Pfx,_}|_]}, Acc) ->
-	      case yang:parse_file(filename:join(Dir, binary_to_list(F) ++ ".yang")) of
-		  {ok, Y} ->
+	      case read(filename:join(Dir, binary_to_list(F) ++ Ext)) of
+		  {{ok, Y},_} ->
 		      case [D || {module,_,N,D} <- Y,
 				 N == F] of
 			  [ImpData] ->
@@ -43,7 +59,7 @@ imports(Data, Dir) ->
 					[F, no_such_module]),
 			      Acc
 		      end;
-		  Error ->
+		  {Error,_} ->
 		      io:fwrite("ERROR: cannot_import ~s (~p)~n", [F, Error]),
 		      Acc
 	      end;
