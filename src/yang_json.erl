@@ -162,7 +162,7 @@ markdown_descriptions(Msg) ->
 	    ["**descriptions**\n",
 	     "<dl><dt>", K, "</dt>\n", "<dd>", D,
 	     " (<b>type:</b> ", type_to_text(T), ")", "</dd>",
-	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1, 
+	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1,
 	       " (<b>type:</b> ", type_to_text(T1), ")", "</dd>"]
 	      || {K1,{D1,T1}} <- Tail],
 	     "\n</dl>\n\n"]
@@ -174,10 +174,10 @@ collect_descriptions({array, L}, Acc) ->
     lists:foldl(fun collect_descriptions/2, Acc, L);
 collect_descriptions({K,{array,L},D,_}, Acc) ->
     lists:foldl(fun collect_descriptions/2,
-		orddict:store(K, {D,"array"}, Acc), L);
+		orddict:store(K, {D,<<"array">>}, Acc), L);
 collect_descriptions({K,{struct,L},D,_}, Acc) ->
     lists:foldl(fun collect_descriptions/2,
-		orddict:store(K, {D,"object"}, Acc), L);
+		orddict:store(K, {D,<<"object">>}, Acc), L);
 collect_descriptions({K,V,D,T}, Acc) ->
     collect_descriptions(V, orddict:store(K, {D,T}, Acc));
 collect_descriptions({_K,V}, Acc) ->
@@ -234,14 +234,14 @@ type(Is, Data, Imports) ->
 			[Def] ->
 			    type(Def, ImpData, Imports);
 			[] ->
-			    descr_type(Type)
+			    Type
 		    end;
 		_ ->
 		    case [D1 || {typedef,_,T1,D1} <- Data, T == T1] of
 			[Def|_] ->
 			    type(Def, Data, Imports);
 			[] ->
-			    descr_type(Type)
+			    Type
 		    end
 	    end
     end.
@@ -249,7 +249,7 @@ type(Is, Data, Imports) ->
 descr_type(Is, Data, Imports) ->
     case lists:keyfind(type, 1, Is) of
 	false ->
-	    "untyped";
+	    <<"untyped">>;
 	{type, _, T, _} = Type ->
 	    case binary:split(T, <<":">>) of
 		[Pfx, Ts] ->
@@ -258,22 +258,22 @@ descr_type(Is, Data, Imports) ->
 			[Def] ->
 			    type(Def, ImpData, Imports);
 			[] ->
-			    descr_type(Type)
+			    Type
 		    end;
 		_ ->
 		    case [D1 || {typedef,_,T1,D1} <- Data, T == T1] of
 			[Def|_] ->
 			    type(Def, Data, Imports);
 			[] ->
-			    descr_type(Type)
+			    Type
 		    end
 	    end
     end.
 
-descr_type({type, _, <<"enumeration">>, [{enum,_,_,_} |_] = En}) ->
-    {enum, [ {E, I} || {enum,_,E,I} <- En] };
-descr_type({type, _, T, _}) ->
-    T.
+%% descr_type({type, _, <<"enumeration">>, [{enum,_,_,_} |_] = En}) ->
+%%     {enum, [ {E, I} || {enum,_,E,I} <- En] };
+%% descr_type({type, _, T, _}) ->
+%%     T.
 
 %% descr_type({type, _, <<"enumeration">>, [{enum,_,E,I} |En]}) ->
 %%     [ enum_value(I), " (", E, ")" | [ [ " | ", enum_value(I1), " (", E1, ")"]
@@ -283,12 +283,14 @@ descr_type({type, _, T, _}) ->
 %% descr_type({type, _, T, _}) ->
 %%     T.
 
-type_to_text({enum, [{E,I} |Vals]}) ->
+type_to_text({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
     [ val2txt(I), " (", E, ")" | [ [ " | ", val2txt(I1), " (", E1, ")"]
-				   || {E1, I1} <- Vals] ];
-type_to_text(<<"boolean">>) ->
+				   || {enum, _, E1, I1} <- En] ];
+type_to_text({type, _, <<"boolean">>, _}) ->
     "\"1\" (true) | \"0\" (false)";
-type_to_text(T) ->
+type_to_text({type, _, T, _}) ->
+    T;
+type_to_text(T) when is_binary(T) ->
     T.
 
 
