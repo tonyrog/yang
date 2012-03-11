@@ -160,8 +160,10 @@ markdown_descriptions(Msg) ->
 	[] -> [];
 	[{K,{D,T}}|Tail] ->
 	    ["**descriptions**\n",
-	     "<dl><dt>", K, "</dt>\n", "<dd>", D, " (<b>type:</b> ", T, ")", "</dd>",
-	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1, " (<b>type:</b> ", T1, ")", "</dd>"]
+	     "<dl><dt>", K, "</dt>\n", "<dd>", D,
+	     " (<b>type:</b> ", type_to_text(T), ")", "</dd>",
+	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1, 
+	       " (<b>type:</b> ", type_to_text(T1), ")", "</dd>"]
 	      || {K1,{D1,T1}} <- Tail],
 	     "\n</dl>\n\n"]
     end.
@@ -223,6 +225,30 @@ descr(L) ->
 type(Is, Data, Imports) ->
     case lists:keyfind(type, 1, Is) of
 	false ->
+	    undefined;
+	{type, _, T, _} = Type ->
+	    case binary:split(T, <<":">>) of
+		[Pfx, Ts] ->
+		    ImpData = orddict:fetch(Pfx, Imports),
+		    case [D1 || {typedef,_,T1,D1} <- ImpData, Ts == T1] of
+			[Def] ->
+			    type(Def, ImpData, Imports);
+			[] ->
+			    descr_type(Type)
+		    end;
+		_ ->
+		    case [D1 || {typedef,_,T1,D1} <- Data, T == T1] of
+			[Def|_] ->
+			    type(Def, Data, Imports);
+			[] ->
+			    descr_type(Type)
+		    end
+	    end
+    end.
+
+descr_type(Is, Data, Imports) ->
+    case lists:keyfind(type, 1, Is) of
+	false ->
 	    "untyped";
 	{type, _, T, _} = Type ->
 	    case binary:split(T, <<":">>) of
@@ -244,15 +270,33 @@ type(Is, Data, Imports) ->
 	    end
     end.
 
-descr_type({type, _, <<"enumeration">>, [{enum,_,E,I} |En]}) ->
-    [ enum_value(I), " (", E, ")" | [ [ " | ", enum_value(I1), " (", E1, ")"]
-				     || {enum,_,E1,I1} <- En ] ];
-descr_type({type, _, <<"boolean">>, _}) ->
-    "\"1\" (true) | \"0\" (false)";
+descr_type({type, _, <<"enumeration">>, [{enum,_,_,_} |_] = En}) ->
+    {enum, [ {E, I} || {enum,_,E,I} <- En] };
 descr_type({type, _, T, _}) ->
     T.
 
-enum_value(I) ->
+%% descr_type({type, _, <<"enumeration">>, [{enum,_,E,I} |En]}) ->
+%%     [ enum_value(I), " (", E, ")" | [ [ " | ", enum_value(I1), " (", E1, ")"]
+%% 				     || {enum,_,E1,I1} <- En ] ];
+%% descr_type({type, _, <<"boolean">>, _}) ->
+%%     "\"1\" (true) | \"0\" (false)";
+%% descr_type({type, _, T, _}) ->
+%%     T.
+
+type_to_text({enum, [{E,I} |Vals]}) ->
+    [ val2txt(I), " (", E, ")" | [ [ " | ", val2txt(I1), " (", E1, ")"]
+				   || {E1, I1} <- Vals] ];
+type_to_text(<<"boolean">>) ->
+    "\"1\" (true) | \"0\" (false)";
+type_to_text(T) ->
+    T.
+
+
+
+%% enum_value(I) ->
+%%     {value,_,V,_} = lists:keyfind(value, 1, I),
+%%     V.
+val2txt(I) ->
     {value,_,V,_} = lists:keyfind(value, 1, I),
     ["\"", binary_to_list(V), "\""].
 
