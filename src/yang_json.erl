@@ -6,7 +6,7 @@
 to_json_type(X, {type,_,<<"decimal64">>,I} = T) when is_float(X) ->
     F = case lists:keyfind('fraction-digits', 1, I) of
 	    false -> 18;
-	    {_,F1} -> F1
+	    {_,_,F1,_} -> list_to_integer(binary_to_list(F1))
 	end,
     case F of
 	?fd(1,-922337203685477580.8, 922337203685477580.7) -> ok;
