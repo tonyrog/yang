@@ -46,7 +46,12 @@ check_type(X, {type,_,<<"enumeration">>,En}) ->
     end;
 check_type(X, {type,_,<<"binary">>,_}) when is_binary(X) -> {true, X};
 check_type(X, {type,_,<<"bits">>,_}) when is_bitstring(X) -> {true, X};
-check_type(X, {type,_,<<"string">>,_}) -> {true, to_list(X)};
+check_type(X, {type,_,<<"string">>,_}) ->
+    try {true, iolist_to_binary(X)}
+    catch
+	error:_ ->
+	    false
+    end;
 check_type(<<"1">>, {type,_,<<"boolean">>,_}) -> {true, true};
 check_type(<<"0">>, {type,_,<<"boolean">>,_}) -> {true, false};
 check_type(X, {type,_,<<"empty">>,_} ) ->
@@ -106,7 +111,6 @@ to_list(B) when is_binary(B) ->
     binary_to_list(B);
 to_list(L) when is_list(L) ->
     L.
-
 
 get_value(I) ->
     {value, V} = lists:keyfind(value, 1, I),

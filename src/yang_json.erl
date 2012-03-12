@@ -1,6 +1,51 @@
 -module(yang_json).
 -compile(export_all).
 
+-define(fd(Fl, A, B), Fl when A =< X, X =< B).
+
+to_json_type(X, {type,_,<<"decimal64">>,I} = T) when is_float(X) ->
+    F = case lists:keyfind('fraction-digits', 1, I) of
+	    false -> 18;
+	    {_,F1} -> F1
+	end,
+    case F of
+	?fd(1,-922337203685477580.8, 922337203685477580.7) -> ok;
+	?fd(2, -92233720368547758.08, 92233720368547758.07) -> ok;
+	?fd(3, -9223372036854775.808, 9223372036854775.807) -> ok;
+	?fd(4, -922337203685477.5808, 922337203685477.5807) -> ok;
+	?fd(5, -92233720368547.75808, 92233720368547.75807) -> ok;
+	?fd(6, -9223372036854.775808, 9223372036854.775807) -> ok;
+	?fd(7, -922337203685.4775808, 922337203685.4775807) -> ok;
+	?fd(8, -92233720368.54775808, 92233720368.54775807) -> ok;
+	?fd(9, -9223372036.854775808, 9223372036.854775807) -> ok;
+	?fd(10, -922337203.6854775808, 922337203.6854775807) -> ok;
+	?fd(11, -92233720.36854775808, 92233720.36854775807) -> ok;
+	?fd(12, -9223372.036854775808, 9223372.036854775807) -> ok;
+	?fd(13, -922337.2036854775808, 922337.2036854775807) -> ok;
+	?fd(14, -92233.72036854775808, 92233.72036854775807) -> ok;
+	?fd(15, -9223.372036854775808, 9223.372036854775807) -> ok;
+	?fd(16, -922.3372036854775808, 922.3372036854775807) -> ok;
+	?fd(17, -92.23372036854775808, 92.23372036854775807) -> ok;
+	?fd(18, -9.223372036854775808, 9.223372036854775807) -> ok;
+	_ -> error({type_error, [X, T]})
+    end,
+    list_to_binary(io_lib:fwrite("~." ++ integer_to_list(F) ++ "f", [X]));
+to_json_type(X, {type,_,<<"int", _/binary>>,_}) when is_integer(X) ->
+    list_to_binary(integer_to_list(X));
+to_json_type(X, {type,_,<<"uint", _/binary>>,_}) when is_integer(X), X >= 0 ->
+    list_to_binary(integer_to_list(X));
+to_json_type(X, {type,_,<<"enumeration">>, En} = T) ->
+    case [lists:keyfind(value,1,I1) || {enum,_,E1,I1} <- En,
+				       E1 == X] of
+	[{value,_,V,_}] ->
+	    V;
+	[] ->
+	    error({type_error, [X, T]})
+    end;
+to_json_type(X, _) ->
+    X.
+
+
 json_rpc(YangFile) ->
     Dir = filename:dirname(YangFile),
     case read(YangFile) of
