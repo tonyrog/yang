@@ -84,7 +84,7 @@ to_json_rpc(Data, Dir) ->
       fun({rpc,_,N,InOut}, Acc) ->
 	      [{binary_to_list(N), mk_rpc_pair(InOut, N, Data, Imports)} | Acc];
 	 ({notification,_,N,Elems}, Acc) ->
-	      [{binary_to_list(N), notification(Elems, Data, Imports)} | Acc];
+	      [{binary_to_list(N), notification(N, Elems, Data, Imports)} | Acc];
 	 (_, Acc) ->
 	      Acc
       end, [], Data).
@@ -112,10 +112,12 @@ imports(Data, {Dir,Ext}) ->
 	      Acc
       end, orddict:new(), Data).
 
-notification(Elems, Data, Imports) ->
+notification(N, Elems, Data, Imports) ->
     {notification,
      descr(Elems),
-     {struct, rpc_params(Elems, Data, Imports)}}.
+     {struct, [{"json-rpc", "2.0"},
+	       {"method", binary_to_list(N)},
+	       {"params", {struct, rpc_params(Elems, Data, Imports)}}]}}.
 
 mk_rpc_pair(InOut, N, Data, Imports) ->
     {_,_,_,I} = lists:keyfind(input, 1, InOut),
@@ -328,6 +330,8 @@ descr_type(Is, Data, Imports) ->
 %% descr_type({type, _, T, _}) ->
 %%     T.
 
+type_to_text(undefined) ->
+    "untyped";
 type_to_text({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
     [ val2txt(I), " (", E, ")" | [ [ " | ", val2txt(I1), " (", E1, ")"]
 				   || {enum, _, E1, I1} <- En] ];
