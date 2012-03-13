@@ -50,7 +50,7 @@ json_rpc(YangFile) ->
     Dir = filename:dirname(YangFile),
     case read(YangFile) of
 	{{ok, Y}, Ext} ->
-	    each_module(fun to_json_rpc/2, Y, {Dir, Ext});
+	    each_module(fun to_json_rpc/3, Y, {Dir, Ext});
 	{Error, _} ->
 	    Error
     end.
@@ -72,20 +72,23 @@ read_eterm(F) ->
     end.
 
 each_module(F, [{module,_,M,Data}|Rest], Dir) ->
-    [{module, binary_to_list(M), F(Data, Dir)} | each_module(F, Rest, Dir)];
+    Ms = binary_to_list(M),
+    [{module, Ms, F(Data, Dir, Ms)} | each_module(F, Rest, Dir)];
 each_module(F, [_|Rest], Dir) ->
     each_module(F, Rest, Dir);
 each_module(_, [], _) ->
     [].
 
-to_json_rpc(Data, Dir) ->
+to_json_rpc(Data, Dir, M) ->
     Imports = imports(Data, Dir),
     Data1 = augment(Data, Imports),
     lists:foldr(
       fun({rpc,_,N,InOut}, Acc) ->
-	      [{binary_to_list(N), mk_rpc_pair(InOut, N, Data1, Imports)} | Acc];
+	      Ns = M++":"++binary_to_list(N),
+	      [{Ns, mk_rpc_pair(InOut, Ns, Data1, Imports)} | Acc];
 	 ({notification,_,N,Elems}, Acc) ->
-	      [{binary_to_list(N), notification(N, Elems, Data1, Imports)} | Acc];
+	      Ns = M++":"++binary_to_list(N),
+	      [{Ns, notification(Ns, Elems, Data1, Imports)} | Acc];
 	 (_, Acc) ->
 	      Acc
       end, [], Data1).
@@ -174,7 +177,7 @@ notification(N, Elems, Data, Imports) ->
     {notification,
      descr(Elems),
      {struct, [{"json-rpc", "2.0"},
-	       {"method", binary_to_list(N)},
+	       {"method", N},
 	       {"params", {struct, rpc_params(Elems, Data, Imports)}}]}}.
 
 mk_rpc_pair(InOut, N, Data, Imports) ->
@@ -182,7 +185,7 @@ mk_rpc_pair(InOut, N, Data, Imports) ->
     {_,_,_,O} = lists:keyfind(output, 1, InOut),
     {descr(InOut),
      {request, {struct, [{"json-rpc", "2.0"},
-			 {"method", binary_to_list(N)},
+			 {"method", N},
 			 {"id", ""},
 			 {"params", {struct, rpc_params(I, Data, Imports)}}]}},
      {reply, {struct, [{"json-rpc", "2.0"},
