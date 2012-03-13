@@ -210,7 +210,7 @@ rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
     [{binary_to_list(N), "", descr(Is), type(Is,Data,Imports)}
      | rpc_params(T, Data, Imports)];
 rpc_params([{anyxml,_,N,Is}|T], Data, Imports) ->
-    [{binary_to_list(N), "", descr(Is), type(Is,Data,Imports)}
+    [{binary_to_list(N), "", descr(Is), anyxml}
      | rpc_params(T, Data, Imports)];
 rpc_params([{list,_,N,Items}|T], Data, Is) ->
     [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]},
@@ -390,6 +390,8 @@ descr_type(Is, Data, Imports) ->
 
 type_to_text(undefined) ->
     "untyped";
+type_to_text(anyxml) ->
+    "XML";
 type_to_text({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
     [ val2txt(I), " (", E, ")" | [ [ " | ", val2txt(I1), " (", E1, ")"]
 				   || {enum, _, E1, I1} <- En] ];

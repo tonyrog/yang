@@ -36,7 +36,8 @@ json_rpc(YangFile) ->
 %% @end
 check_type(X, <<"object">> ) -> {true, X};
 check_type(X, <<"array">>  ) -> {true, X};
-check_type(X, <<"untyped">>) -> {true, X};
+check_type(X, undefined) -> {true, X};
+check_type(X, anyxml) when is_list(X); is_binary(X) -> {true, X};
 check_type(X, {type,_,<<"enumeration">>,En}) ->
     case [E || {E,V} <- [{E1,get_value(I)} || {enum,_,E1,I} <- En],
 	       V == X] of
