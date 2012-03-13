@@ -80,14 +80,15 @@ each_module(_, [], _) ->
 
 to_json_rpc(Data, Dir) ->
     Imports = imports(Data, Dir),
+    Data1 = augment(Data, Imports),
     lists:foldr(
       fun({rpc,_,N,InOut}, Acc) ->
-	      [{binary_to_list(N), mk_rpc_pair(InOut, N, Data, Imports)} | Acc];
+	      [{binary_to_list(N), mk_rpc_pair(InOut, N, Data1, Imports)} | Acc];
 	 ({notification,_,N,Elems}, Acc) ->
-	      [{binary_to_list(N), notification(N, Elems, Data, Imports)} | Acc];
+	      [{binary_to_list(N), notification(N, Elems, Data1, Imports)} | Acc];
 	 (_, Acc) ->
 	      Acc
-      end, [], Data).
+      end, [], Data1).
 
 imports(Data, {Dir,Ext}) ->
     lists:foldl(
@@ -111,6 +112,63 @@ imports(Data, {Dir,Ext}) ->
 	 (_, Acc) ->
 	      Acc
       end, orddict:new(), Data).
+
+augment([{augment, _, What, Items}|T], Imports) ->
+    case re:split(What, "/") of
+	[<<>>, Req, Sub] ->
+	    %% we're doing very specific processing here, matching only on what
+	    %% we expect to find.
+	    case {re:split(Req, ":"), re:split(Sub, ":")} of
+		{[Pfx, Method], [Pfx, Part]} ->
+		    case [X || X <- orddict:fetch(Pfx, Imports),
+				element(3, X) == Method] of
+			[{rpc,L,M,InOut}] ->
+			    PartAm = binary_to_atom(Part, latin1),
+			    case lists:keyfind(PartAm, 1, InOut) of
+				{_,_,_,List} = Obj ->
+				    [{rpc,L,M,
+				      expand_uses(
+					lists:keyreplace(PartAm, 1, InOut,
+							 setelement(
+							   4, Obj, List ++ Items)),
+					Pfx)}
+				     | augment(T, Imports)];
+				_ ->
+				    error({cannot_augment, What})
+			    end;
+			[] ->
+			    error({augment_not_found, What})
+		    end;
+		_ ->
+		    error({unfamiliar_augment, What})
+	    end;
+	_ ->
+	    error({unfamiliar_augment, What})
+    end;
+augment([H|T], Imports) ->
+    [H|augment(T, Imports)];
+augment([], _) ->
+    [].
+
+expand_uses([{Type,L,C,I}|T], Pfx) when Type == input; Type == output ->
+    [{Type,L,C,expand_uses_(I, Pfx)} | expand_uses(T, Pfx)];
+expand_uses([H|T], Pfx) ->
+    [H|expand_uses(T, Pfx)];
+expand_uses([], _) ->
+    [].
+
+expand_uses_([{uses,Lu,What,Iu} = Uses|T], Pfx) ->
+    case binary:match(What, <<":">>) of
+	nomatch ->
+	    [{uses,Lu,<<Pfx/binary, ":", What/binary>>,Iu}|expand_uses_(T, Pfx)];
+	_ ->
+	    [Uses|expand_uses_(T, Pfx)]
+    end;
+expand_uses_([H|T], Pfx) ->
+    [H|expand_uses_(T, Pfx)];
+expand_uses_([], _) ->
+    [].
+
 
 notification(N, Elems, Data, Imports) ->
     {notification,
