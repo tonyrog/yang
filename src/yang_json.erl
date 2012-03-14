@@ -34,6 +34,8 @@ to_json_type(X, {type,_,<<"int", _/binary>>,_}) when is_integer(X) ->
     list_to_binary(integer_to_list(X));
 to_json_type(X, {type,_,<<"uint", _/binary>>,_}) when is_integer(X), X >= 0 ->
     list_to_binary(integer_to_list(X));
+to_json_type(false, {type,_,<<"boolean">>,_}) -> <<"0">>;
+to_json_type(true, {type,_,<<"boolean">>,_}) -> <<"1">>;
 to_json_type(X, {type,_,<<"enumeration">>, En} = T) ->
     case [lists:keyfind(value,1,I1) || {enum,_,E1,I1} <- En,
 				       E1 == X] of
