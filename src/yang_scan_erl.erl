@@ -10,6 +10,7 @@
 -export([open/1, open/2, string/1, next/1, push_back/2, close/1]).
 -export([all/1, all/2]).
 -export([file/1, file/2]).
+-export([open_file/2]).    % also used by yang_scan_nif.erl
 -import(lists, [reverse/1]).
 
 -type line() :: pos_integer().
@@ -48,12 +49,21 @@ open(File) ->
 
 open(File,Opts) ->
     ChunkSize = proplists:get_value(chunk_size, Opts, 1024),
-    case file:open(File, [read,raw,binary]) of
+    case open_file(File, Opts) of
 	{ok,Fd} ->
 	    {ok, #yang_scan { stream={Fd,ChunkSize}}};
 	Error ->
 	    Error
     end.
+
+open_file(File, Opts) ->
+    case lists:keyfind(open_hook, 1, Opts) of
+	false ->
+	    file:open(File, [read,raw,binary]);
+	{_, F} when is_function(F, 2) ->
+	    F(File, Opts)
+    end.
+
 
 string(Binary) when is_binary(Binary) ->
     {ok, #yang_scan { buffer=Binary }};

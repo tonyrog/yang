@@ -64,7 +64,7 @@ open(File) ->
 
 open(File,Opts) ->
     ChunkSize = proplists:get_value(chunk_size, Opts, 1024),
-    case file:open(File, [read,raw,binary]) of
+    case yang_scan_erl:open_file(File, Opts) of
 	{ok,Fd} ->
 	    Scanner = new(),
 	    {ok, #yang_scan { scanner = Scanner, stream={Fd,ChunkSize}}};
