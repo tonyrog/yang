@@ -10,7 +10,7 @@
 -export([open/1, open/2, string/1, next/1, push_back/2, close/1]).
 -export([all/1, all/2]).
 -export([file/1, file/2]).
--export([open_file/2]).    % also used by yang_scan_nif.erl
+-export([open_file/2, open_options/0]).    % also used by yang_scan_nif.erl
 -import(lists, [reverse/1]).
 
 -type line() :: pos_integer().
@@ -59,10 +59,13 @@ open(File,Opts) ->
 open_file(File, Opts) ->
     case lists:keyfind(open_hook, 1, Opts) of
 	false ->
-	    file:open(File, [read,raw,binary]);
+	    file:open(File, open_options());
 	{_, F} when is_function(F, 2) ->
 	    F(File, Opts)
     end.
+
+open_options() ->
+    [read, raw, binary].
 
 
 string(Binary) when is_binary(Binary) ->
