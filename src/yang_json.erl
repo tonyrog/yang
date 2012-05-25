@@ -32,6 +32,11 @@ to_json_type(X, {type,_,<<"decimal64">>,I} = T) when is_float(X) ->
     list_to_binary(io_lib:fwrite("~." ++ integer_to_list(F) ++ "f", [X]));
 to_json_type(X, {type,_,<<"int", _/binary>>,_}) when is_integer(X) ->
     list_to_binary(integer_to_list(X));
+to_json_type(X, {type,_,<<"string">>,_}) when is_atom(X) ->
+    atom_to_binary(X, latin1);
+to_json_type(X, {type,_,<<"string">>,_}) when is_list(X) ->
+    iolist_to_binary(X);
+to_json_type(_, void) -> <<"ok">>;
 to_json_type(X, {type,_,<<"uint", _/binary>>,_}) when is_integer(X), X >= 0 ->
     list_to_binary(integer_to_list(X));
 to_json_type(false, {type,_,<<"boolean">>,_}) -> <<"0">>;
@@ -49,29 +54,58 @@ to_json_type(X, _) ->
 
 
 json_rpc(YangFile) ->
+    json_rpc(YangFile, []).
+
+json_rpc(YangFile, Opts) ->
     Dir = filename:dirname(YangFile),
-    case read(YangFile) of
+    case read(YangFile, Ext = filename:extension(YangFile), Opts) of
 	{{ok, Y}, Ext} ->
-	    each_module(fun to_json_rpc/3, Y, {Dir, Ext});
+	    each_module(fun to_json_rpc/3, Y, {Dir, Ext, Opts});
 	{Error, _} ->
 	    Error
     end.
 
 read(F) ->
-    read(F, filename:extension(F)).
+    read(F, filename:extension(F), []).
 
-read(F, ".yang") ->
-    {yang:parse_file(F), ".yang"};
-read(F, ".eterm") ->
-    {read_eterm(F), ".eterm"}.
+read(F, ".yang", Opts) ->
+    {yang_parser:parse(F, Opts), ".yang"};
+read(F, ".eterm", Opts) ->
+    {read_eterm(F, Opts), ".eterm"}.
 
-read_eterm(F) ->
-    case file:read_file(F) of
-	{ok, Bin} ->
-	    {ok, binary_to_term(Bin)};
-	Error ->
-	    Error
+read_eterm(F, Opts) ->
+    case lists:keyfind(open_hook, 1, Opts) of
+	{_, Open} ->
+	    case Open(F, Opts) of
+		{ok, Fd} ->
+		    try
+			Bin = read_open_file(Fd),
+			{ok, binary_to_term(Bin)}
+		    after
+			file:close(Fd)
+		    end;
+		{error, _} = E ->
+		    E
+	    end;
+	false ->
+	    case file:read_file(F) of
+		{ok, Bin} ->
+		    {ok, binary_to_term(Bin)};
+		Error ->
+		    Error
+	    end
     end.
+
+read_open_file(Fd) ->
+    file:position(Fd, bof),
+    Read = fun() -> file:read(Fd, 4096) end,
+    read_open_file(Read(), Read, <<>>).
+
+read_open_file(eof, _, Acc) ->
+    Acc;
+read_open_file({ok, Bytes}, Read, Acc) ->
+    read_open_file(Read(), Read, <<Acc/binary, Bytes/binary>>).
+
 
 each_module(F, [{module,_,M,Data}|Rest], Dir) ->
     Ms = binary_to_list(M),
@@ -81,8 +115,8 @@ each_module(F, [_|Rest], Dir) ->
 each_module(_, [], _) ->
     [].
 
-to_json_rpc(Data, Dir, M) ->
-    Imports = imports(Data, Dir),
+to_json_rpc(Data, Arg, M) ->
+    Imports = imports(Data, Arg),
     Data1 = augment(Data, Imports),
     lists:foldr(
       fun({rpc,_,N,InOut}, Acc) ->
@@ -95,10 +129,11 @@ to_json_rpc(Data, Dir, M) ->
 	      Acc
       end, [], Data1).
 
-imports(Data, {Dir,Ext}) ->
+imports(Data, {Dir,Ext,Opts}) ->
     lists:foldl(
       fun({import,_,F,[{prefix,_,Pfx,_}|_]}, Acc) ->
-	      case read(filename:join(Dir, binary_to_list(F) ++ Ext)) of
+	      File = filename:join(Dir, binary_to_list(F)) ++ Ext,
+	      case read(File, Ext, Opts) of
 		  {{ok, Y},_} ->
 		      case [D || {module,_,N,D} <- Y,
 				 N == F] of
@@ -184,7 +219,10 @@ notification(N, Elems, Data, Imports) ->
 
 mk_rpc_pair(InOut, N, Data, Imports) ->
     {_,_,_,I} = lists:keyfind(input, 1, InOut),
-    {_,_,_,O} = lists:keyfind(output, 1, InOut),
+    O = case lists:keyfind(output, 1, InOut) of
+	    {_,_,_,Ox}  -> Ox;
+	    false -> void
+	end,
     {descr(InOut),
      {request, {struct, [{"json-rpc", "2.0"},
 			 {"method", N},
@@ -192,7 +230,12 @@ mk_rpc_pair(InOut, N, Data, Imports) ->
 			 {"params", {struct, rpc_params(I, Data, Imports)}}]}},
      {reply, {struct, [{"json-rpc", "2.0"},
 		       {"id", ""},
-		       {"result", {struct, rpc_params(O, Data, Imports)}}]}}}.
+		       {"result",
+			case O of
+			    void -> void;
+			    _ ->
+				{struct, rpc_params(O, Data, Imports)}
+			end}]}}}.
 
 
 rpc_params([{uses,_,G,_}|T], Data, Imports) ->
