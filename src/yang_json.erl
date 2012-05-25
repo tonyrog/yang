@@ -342,6 +342,8 @@ collect_descriptions(_, Acc) ->
 pp_json(Json) ->
     pp_json(Json, 0).
 
+pp_json(void, _) ->
+    "\"ok\"";
 pp_json({struct, []}, I) ->
     [i(I), "{}"];
 pp_json({struct, [H|T]}, I) ->
