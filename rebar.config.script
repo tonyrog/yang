@@ -1,20 +1,18 @@
 %% -*- erlang -*-
 
 %%
-%% If we have a X_COMP_REBAR_CONFIG_MASTER_SCRIPT environment variable, script that file.
-%% This variable normally points to a master build system's central rebar.config.script
-%% that sets up the environment for the local module build
+%% If the environment variable X_COMP is set, it is an indication that self is being compiled
+%% as a dependency under exodev. Since exodev lists all dependency in its root rebar.config 
+%% file in order to have a flat view of the dependency tree, we should nil out our local
+%% deps list provided by our local rebar.config
 %%
-case os:getenv("X_COMP_REBAR_CONFIG_MASTER_SCRIPT") of
+case os:getenv("EXODEV_COMP") of
     false ->
         CONFIG;
 
-    Script ->
-        case file:script(Script, [ { 'CONFIG', CONFIG }, { 'SCRIPT', SCRIPT } ] ) of
-            { ok, Value } -> Value;
-
-            { error, Reason } -> 
-                io:format("Failed to evaluate ~s: ~p\n", [ Script, Reason ] ),
-                CONFIG
+    _ ->
+        case lists:keytake(deps, 1, CONFIG) of
+            { value, _, Remainder } -> Remainder;
+            _ -> CONFIG
         end
 end.
