@@ -1,58 +1,20 @@
- %% -*- erlang -*-
-case os:getenv("REBAR_DEPS") of
-    false -> Cfg1 = CONFIG;
-    [] -> Cfg1 = CONFIG;
-    Dir ->
-	Cfg1 = lists:keystore(deps_dir, 1, CONFIG, {deps_dir, Dir})
-end,
+%% -*- erlang -*-
 
 %%
-%% If X_COMP_TARGE_ARCH, X_COMP_ERLANG_ROOT and X_COMP_TOOLCHAIN_ROOT is set,
-%% Setup the environment for cross compilation of port drivers, 
-%% else just return Cfg1.
+%% If we have a X_COMP_REBAR_CONFIG_MASTER_SCRIPT environment variable, script that file.
+%% This variable normally points to a master build system's central rebar.config.script
+%% that sets up the environment for the local module build
 %%
-%% These variables are normally set by exodev/Makefile in its target-compile
-%% entry. This module is almost always cross compiled by the exodev
-%% module, which should includes this module.
-%% You can,however, set the variables yourself if you want to do a local compile.
-%%
-%%  X_COMP_TARGET_ARCH=arm-x-linux-gnu \
-%%  X_COMP_OTP_INSTALL_ROOT=/var/tmp/erl-arm-x-linux-gnu \
-%%  X_COMP_TOOLCHAIN_ROOT=/opt/arm_toolchain \
-%%  rebar compile
-%%
-%% See exodev/README.md fo instructions on how to build a cross-compiled
-%% OTP.
-%%
-TargetArch = os:getenv("X_COMP_TARGET_ARCH"),
-ErlRoot = os:getenv("X_COMP_OTP_INSTALL_ROOT"),
-ToolChainRoot = os:getenv("X_COMP_TOOLCHAIN_ROOT"),
-if ToolChainRoot =/= false, 
-   ErlRoot =/= false,
-   TargetArch =/= false ->
-        ErtsInclude = filename:join(ErlRoot, "lib/erlang/usr/include"),
-        ErtsLibPath = filename:join(ErlRoot, "lib/erlang/lib"),
-        case os:getenv("X_COMP_C_FLAGS") of
-            false -> CFlags = "";
-            CFlags -> true
-        end,
-        case os:getenv("X_COMP_LD_FLAGS") of
-            false -> LdFlags = "";
-            LdFlags -> true
-        end,
+case os:getenv("X_COMP_REBAR_CONFIG_MASTER_SCRIPT") of
+    false ->
+        CONFIG;
 
-        lists:keystore(port_env, 1, Cfg1, 
-                       { port_env, [ {"CFLAGS", "$CFLAGS -fPIC -I" ++ ErtsInclude ++ " " ++ CFlags }, 
-                                     {"LDFLAGS", "$LDFLAGS -L" ++ ErtsLibPath ++ " " ++ LdFlags }, 
-                                     {"CC", filename:join(ToolChainRoot, 
-                                                          filename:join("bin", TargetArch ++ "-gcc")) },
-                                     {"LD", filename:join(ToolChainRoot, 
-                                                          filename:join("bin", TargetArch ++ "-ld")) },
-                                     {"ERL_LDFLAGS", "" },
-                                     {"ERL_CFLAGS", "-g" }
-                                   ]
-                       }
-                      );
-   true ->
-        Cfg1
+    Script ->
+        case file:script(Script, [ { 'CONFIG', CONFIG }, { 'SCRIPT', SCRIPT } ] ) of
+            { ok, Value } -> Value;
+
+            { error, Reason } -> 
+                io:format("Failed to evaluate ~s: ~p\n", [ Script, Reason ] ),
+                CONFIG
+        end
 end.
