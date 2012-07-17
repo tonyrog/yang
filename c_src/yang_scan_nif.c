@@ -1,10 +1,17 @@
 /****** BEGIN COPYRIGHT *******************************************************
  *
- * Copyright (C) 2012 Feuerlabs, Inc. All rights reserved.
+ * Copyright (C) 2007 - 2012, Rogvall Invest AB, <tony@rogvall.se>
  *
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ * This software is licensed as described in the file COPYRIGHT, which
+ * you should have received as part of this distribution. The terms
+ * are also available at http://www.rogvall.se/docs/copyright.txt.
+ *
+ * You may opt to use, copy, modify, merge, publish, distribute and/or sell
+ * copies of the Software, and permit persons to whom the Software is
+ * furnished to do so, under the terms of the COPYRIGHT file.
+ *
+ * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
+ * KIND, either express or implied.
  *
  ****** END COPYRIGHT ********************************************************/
 //
@@ -50,9 +57,9 @@ typedef struct _token_t {
 } token_t;
 
 typedef enum {
-    STATE_WSP,  
+    STATE_WSP,
     STATE_WSP_SLASH,           // seen /
-    STATE_LINE_COMMENT, 
+    STATE_LINE_COMMENT,
     STATE_BLOCK_COMMENT,
     STATE_BLOCK_COMMENT_STAR,  // seen *
     STATE_WORD,
@@ -88,13 +95,13 @@ ErlNifResourceType* yang_scan_resource;
 
 static int yang_scan_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
 static int yang_scan_reload(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
-static int yang_scan_upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, 
+static int yang_scan_upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data,
 			 ERL_NIF_TERM load_info);
 static void yang_scan_unload(ErlNifEnv* env, void* priv_data);
 
-static ERL_NIF_TERM yang_scan_new(ErlNifEnv* env, int argc, 
+static ERL_NIF_TERM yang_scan_new(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
-static ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc, 
+static ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 					 const ERL_NIF_TERM argv[]);
 
 ErlNifFunc yang_scan_funcs[] =
@@ -109,9 +116,9 @@ static ERL_NIF_TERM make_token(ErlNifEnv* env,token_t* t)
     ERL_NIF_TERM r;
 
     switch(t->type) {
-    case ';': 
+    case ';':
 	// {';',<line-number>> }
-	r = enif_make_tuple2(env, atm_semi, 
+	r = enif_make_tuple2(env, atm_semi,
 			     enif_make_int(env,t->line));
 	return r;
     case '{':
@@ -130,7 +137,7 @@ static ERL_NIF_TERM make_token(ErlNifEnv* env,token_t* t)
 			     enif_make_int(env, t->line),
 			     enif_make_binary(env, &t->bin));
 	return r;
-		
+
     case TOKEN_STRING:
 	// {string, <linenumber>, binary() }
 	r = enif_make_tuple3(env, atm_string,
@@ -147,7 +154,7 @@ static void inline add_char(int c, yang_scanner_t* obj)
     if (obj->pos < MAX_TOKEN_SIZE)
 	obj->data[obj->pos++] = c;
     else {
-	fprintf(stderr, "%d:%d: token too long (max=%d)\r\n", 
+	fprintf(stderr, "%d:%d: token too long (max=%d)\r\n",
 		obj->t_line, obj->line, MAX_TOKEN_SIZE);
     }
 
@@ -199,7 +206,7 @@ static void enq_word(yang_scanner_t* obj)
     enif_alloc_binary(obj->pos, &t->bin);
     memcpy(t->bin.data, obj->data, obj->pos);
     obj->pos = 0;
-    enq_token(obj, t);    
+    enq_token(obj, t);
 }
 
 static void enq_string(yang_scanner_t* obj)
@@ -210,7 +217,7 @@ static void enq_string(yang_scanner_t* obj)
     enif_alloc_binary(obj->pos, &t->bin);
     memcpy(t->bin.data, obj->data, obj->pos);
     obj->pos = 0;
-    enq_token(obj, t);    
+    enq_token(obj, t);
 }
 
 static void enq_char(yang_scanner_t* obj, int c)
@@ -233,7 +240,7 @@ static void yang_scan_resource_dtor(ErlNifEnv* env, yang_scanner_t* obj)
 {
     token_t* t;
 
-    t = obj->first; 
+    t = obj->first;
     while (t != NULL) {
 	token_t* tn = t->next;
 	release_token(env, t);
@@ -266,9 +273,9 @@ ERL_NIF_TERM yang_scan_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 // Feed scanner a binary data block
-ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc, 
+ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[])
-{    
+{
     yang_scanner_t* obj;
     token_t* t;
     uint8_t* ptr;
@@ -305,9 +312,9 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 		if (*ptr == '/')      { ptr++; GOTO(LINE_COMMENT); }
 		else if (*ptr == '*') { ptr++; GOTO(BLOCK_COMMENT); }
 		else {
-		    obj->t_line = obj->line; 
+		    obj->t_line = obj->line;
 		    add_char('/', obj);
-		    GOTO(WORD); 
+		    GOTO(WORD);
 		}
 	    }
 	    SET_STATE(WSP);
@@ -328,8 +335,8 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 		    obj->t_skip   = false;
 		    obj->column++;
 		    GOTO(DQUOTE_STRING);
-		case '\'': 
-		    obj->t_column = obj->column; // save column		    
+		case '\'':
+		    obj->t_column = obj->column; // save column
 		    obj->t_line   = obj->line;   // save start line
 		    obj->column++;
 		    GOTO(SQUOTE_STRING);
@@ -363,7 +370,7 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 	    if (ptr >= ptr_end)
 		goto out;
 	    else if (*ptr == '/') {
-		ptr++; obj->column += 2; GOTO(WSP); 
+		ptr++; obj->column += 2; GOTO(WSP);
 	    }
 	    SET_STATE(BLOCK_COMMENT);
 	    // FALL TROUGH
@@ -390,17 +397,17 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 		goto out;
 	    else {
 		if (*ptr == '/') {
-		    enq_word(obj); ptr++; GOTO(LINE_COMMENT); 
+		    enq_word(obj); ptr++; GOTO(LINE_COMMENT);
 		}
-		else if (*ptr == '*') { 
-		    enq_word(obj); ptr++; GOTO(BLOCK_COMMENT); 
+		else if (*ptr == '*') {
+		    enq_word(obj); ptr++; GOTO(BLOCK_COMMENT);
 		}
 		else {
 		    add_char('/', obj);
 		}
 	    }
 	    SET_STATE(WORD);
-	    // FALL THROUGH	    
+	    // FALL THROUGH
 	STATE(WORD):
 	    DBG("WORD remain=%ld\r\n", ptr_end - ptr);
 	    while(ptr < ptr_end) {
@@ -421,7 +428,7 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 
 	STATE(DQUOTE_STRING_BSLASH):
 	    DBG("DQUOTE_STRING_BSLASH remain=%ld\r\n", ptr_end - ptr);
-	    if (ptr >= ptr_end) 
+	    if (ptr >= ptr_end)
 		goto out;
 	    else {
 		int c = *ptr++;
@@ -430,8 +437,8 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 		case 't':  add_char('\t', obj); break;
 		case '"':  add_char(c, obj); break;
 		case '\\': add_char(c, obj); break;
-		default: 
-		    add_char('\\', obj); 
+		default:
+		    add_char('\\', obj);
 		    add_char(c, obj);
 		    break;
 		}
@@ -491,7 +498,7 @@ ERL_NIF_TERM yang_scan_next_token(ErlNifEnv* env, int argc,
 		switch(c) {
 		case '\'':
 		    enq_string(obj);
-		    obj->column++; 
+		    obj->column++;
 		    GOTO(WSP);
 		case '\n':
 		    obj->line++;
@@ -558,7 +565,7 @@ static int yang_scan_reload(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_
     return 0;
 }
 
-static int yang_scan_upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, 
+static int yang_scan_upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data,
 			 ERL_NIF_TERM load_info)
 {
     (void) env;
@@ -577,5 +584,5 @@ static void yang_scan_unload(ErlNifEnv* env, void* priv_data)
 
 
 ERL_NIF_INIT(yang_scan_nif, yang_scan_funcs,
-	     yang_scan_load, yang_scan_reload, 
+	     yang_scan_load, yang_scan_reload,
 	     yang_scan_upgrade, yang_scan_unload)
