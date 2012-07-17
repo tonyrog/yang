@@ -1,7 +1,15 @@
+%%%---- BEGIN COPYRIGHT -------------------------------------------------------
+%%%
+%%% Copyright (C) 2012 Feuerlabs, Inc. All rights reserved.
+%%%
+%%% This Source Code Form is subject to the terms of the Mozilla Public
+%%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%%% file, You can obtain one at http://mozilla.org/MPL/2.0/.
+%%%
+%%%---- END COPYRIGHT ---------------------------------------------------------
 %%% @author Tony Rogvall <tony@rogvall.se>
-%%% @copyright (C) 2012, Tony Rogvall
 %%% @doc
-%%%     YANG regular expression 
+%%%     YANG regular expression
 %%% @end
 %%% Created :  7 Jan 2012 by Tony Rogvall <tony@rogvall.se>
 
@@ -19,7 +27,7 @@
 -type name() :: atom().
 
 -type rexpr0() :: atom() | integer() | binary().
-       
+
 -type rexpr1() :: rexpr0() |
 		  {empty} |
 		  {sequence,[rexpr1()]} | {all,[rexpr1()]} |
@@ -66,7 +74,7 @@ normalize(X0) ->
 	{re,_}  -> X0;
 	{const,_} -> X0;
 	X when ?is_symbol(X) -> X;
-	{',',Xs} -> 
+	{',',Xs} ->
 	    normalize({sequence,Xs});
 	{'&',Xs} ->
 	    normalize({all,Xs});
@@ -126,16 +134,16 @@ normalize_list([]) ->
 delete(X,[X|Xs]) -> delete(X,Xs);
 delete(X,[Y|Xs]) -> [Y|delete(X,Xs)];
 delete(_X,[]) -> [].
-    
+
 %% @doc
 %%    Expand a normalized expression
 %% @end
--spec expand(Expr::rexpr(),Lookup::(fun((rexpr0()) -> {boolean(),rexpr()}))) -> 
+-spec expand(Expr::rexpr(),Lookup::(fun((rexpr0()) -> {boolean(),rexpr()}))) ->
 		    rexpr().
 
 expand(Expr) ->
     expand(Expr, fun(X) -> {false,X} end).
-		    
+
 expand(Expr,Lookup) ->
     case Expr of
 	{empty} -> Expr;
@@ -190,7 +198,7 @@ expand(Expr,Lookup) ->
 %%	    if M =:= unbounded ->
 %%		    {sequence,lists:duplicate(N,X1)++[{closure,X1}]};
 %%	       true ->
-%%		    {choice,map(fun(I) -> 
+%%		    {choice,map(fun(I) ->
 %%					{sequence,lists:duplicate(I,X1)}
 %%				end, lists:seq(N,M))}
 %%	    end
@@ -231,7 +239,7 @@ format(X,F) ->
 	    ["(",format(X1,F),")*"];
 	{pclosure,X1} ->
 	    ["(",format(X1,F),")+"];
-	{optional,X1} -> 
+	{optional,X1} ->
 	    ["(",format(X1,F),")?"];
 	{empty} -> [];
 	{X1,{N,M}} when ?is_occure(N,M) ->

@@ -1,5 +1,13 @@
+%%%---- BEGIN COPYRIGHT -------------------------------------------------------
+%%%
+%%% Copyright (C) 2012 Feuerlabs, Inc. All rights reserved.
+%%%
+%%% This Source Code Form is subject to the terms of the Mozilla Public
+%%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%%% file, You can obtain one at http://mozilla.org/MPL/2.0/.
+%%%
+%%%---- END COPYRIGHT ---------------------------------------------------------
 %%% @author Tony Rogvall <tony@rogvall.se>
-%%% @copyright (C) 2012, Tony Rogvall
 %%% @doc
 %%%    YANG token scanner
 %%% @end
@@ -40,7 +48,7 @@ init() ->
 new() ->
     erlang:error(nif_not_loaded).
 
-next_token(_Scanner) ->    
+next_token(_Scanner) ->
     erlang:error(nif_not_loaded).
 
 next_token(_Scanner,_Binary) ->
@@ -58,7 +66,7 @@ file(File, Opts) ->
 	Error ->
 	    Error
     end.
-	    
+
 open(File) ->
     open(File, []).
 
@@ -119,7 +127,7 @@ push_back(Token, Scan = #yang_scan { tokens=Ts}) ->
 		  {token(), #yang_scan{}} |
 		  eof |
 		  {error, term()}.
-		  
+
 next(Scan) ->
     case load_token(Scan) of
 	{Token={string,_,_},Scan1} ->
@@ -178,7 +186,7 @@ load_more(Scanner, S) ->
 	Reason ->
 	    Reason
     end.
-    
+
 
 read(undefined) ->
     eof;

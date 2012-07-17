@@ -1,5 +1,13 @@
+%%%---- BEGIN COPYRIGHT -------------------------------------------------------
+%%%
+%%% Copyright (C) 2012 Feuerlabs, Inc. All rights reserved.
+%%%
+%%% This Source Code Form is subject to the terms of the Mozilla Public
+%%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%%% file, You can obtain one at http://mozilla.org/MPL/2.0/.
+%%%
+%%%---- END COPYRIGHT ---------------------------------------------------------
 %%% @author Tony Rogvall <tony@rogvall.se>
-%%% @copyright (C) 2012, Tony Rogvall
 %%% @doc
 %%%     YANG validator
 %%% @end
@@ -18,7 +26,7 @@
 
 -record(ystmt,{name,min_occure=0,max_occure=0}).
 
--define(Y(Min,Max,Name), 
+-define(Y(Min,Max,Name),
 	#ystmt{name=(Name),min_occure=(Min),max_occure=(Max)}).
 
 -define(ALL(MinOccure,Name,Elements),   {all,Name,MinOccure,Elements}).
@@ -81,7 +89,7 @@ generate_yang_record(Fd, Name) ->
 		 format_record_fields(Elems1)
 	 end,
     ArgValue = case expand_arg(Arg1) of
-		   {const,Const} -> 
+		   {const,Const} ->
 		       Const;
 		   Expanded ->
 		       REString = yang_re:format(Expanded),
@@ -89,7 +97,7 @@ generate_yang_record(Fd, Name) ->
 			   {ok,_Pattern} ->
 			       "";
 			   {error,Reason} ->
-			       io:format("~s: arg=~w, ~p\n", 
+			       io:format("~s: arg=~w, ~p\n",
 					 [Name,Arg1,Reason]),
 			       ""
 		       end
@@ -166,7 +174,7 @@ test_match(Arg, String) ->
 %%
 process_statement_list(List) ->
     process_statement_list({undefined,"",0},List,dict:new()).
-    
+
 process_statement_list(Context,[{Stmt,_Ln,Arg,_}|StmtList],Dict) ->
     Key = statement_key(Context,Stmt,Arg),
     process_statement_list(Context, StmtList,
@@ -215,7 +223,7 @@ statement_name({Prefix,Stmt}) ->
 %%
 statement_key(Context,{Stmt,_Ln,Arg,_}) ->
     statement_key(context_statement(Context),Stmt,Arg).
-    
+
 statement_key('uses','augment',_) -> 'augment@uses';
 statement_key(_, 'deviate','not-supported') -> 'deviate+not-supported';
 statement_key(_, 'deviate','add') -> 'deviate+add';
@@ -226,7 +234,7 @@ statement_key(_, Name, _Arg) when is_binary(Name) -> ?UNKNOWN;
 %% FIXME: what about this?
 statement_key(_, {_Pfx,Name}, _Arg) when is_binary(Name) -> ?UNKNOWN.
 
-%% @doc 
+%% @doc
 %%    Validate YANG stement list input given a parent statement
 %% @end
 -spec is_valid({Stmt::atom(),File::string(),
@@ -274,7 +282,7 @@ is_valid_(Context,Arg,List) ->
 	      fun({Stmt,Ln,_Arg,_Stmts}) ->
 		      io:format("~s:~w: statement '~s' not valid in context '~s':~w\n",
 				[context_file(Context), Ln,
-				 statement_name(Stmt), 
+				 statement_name(Stmt),
 				 statement_name(context_statement(Context)),
 				 context_line(Context)])
 	      end, List2),
@@ -294,7 +302,7 @@ is_valid_argument(Context,ArgName,Arg) ->
 	nomatch ->
 	    io:format("BinArg: ~p\n", [BinArg]),
 	    %% io:format("RE: ~s = ~p\n", [ArgName, RE]),
-	    io:format("~s:~w: invalid argument to statement ~p, does not have the form ~p\n", 
+	    io:format("~s:~w: invalid argument to statement ~p, does not have the form ~p\n",
 		      [context_file(Context),
 		       context_line(Context),
 		       context_statement(Context),
@@ -309,7 +317,7 @@ is_valid_argument(Context,ArgName,Arg) ->
 %% Practical but may (as always) bite back.
 %%
 make_re(Context,ArgName) when is_atom(ArgName) ->
-    case get({re,ArgName}) of %% check string 
+    case get({re,ArgName}) of %% check string
 	undefined ->
 	    Expanded = expand_arg(ArgName),
 	    RE_Expr0 = yang_re:format(Expanded),
@@ -345,15 +353,15 @@ make_re(Context,ArgName) when is_atom(ArgName) ->
 	RE ->
 	    RE
     end.
-    
+
 
 
 validate_rule(Context,R,List,Cnt) ->
     case R of
 	[] -> List;
-	?SEQUENCE(_,Rule) -> 
+	?SEQUENCE(_,Rule) ->
 	    validate_sequence(Context,Rule,List,Cnt);
-	?ALL(Min,_,Rule) -> 
+	?ALL(Min,_,Rule) ->
 	    validate_all(Min,Context,Rule,List,List,Cnt);
 	?CHOICE(Min,_,Rule) ->
 	    validate_choice(Min,Context,Rule,List,Cnt)
@@ -400,7 +408,7 @@ validate_all(Min,Context,[],List,List0,_Cnt) ->
 	    if List =/= List0 ->
 		    remove_elements(length(List), ?UNKNOWN, Context, List);
 	       true ->
-		    io:format("~s:~w: all not taken\n", 
+		    io:format("~s:~w: all not taken\n",
 			      [context_file(Context),
 			       context_line(Context)]),
 		    remove_elements(length(List), ?UNKNOWN, Context, List)
@@ -409,7 +417,7 @@ validate_all(Min,Context,[],List,List0,_Cnt) ->
 	    io:format("warning: ALL with min > 1 not supported yet!\n"),
 	    remove_elements(length(List), ?UNKNOWN, Context, List)
     end.
-	    
+
 
 validate_choice(Min,Context,[R|Rs],List,Cnt) ->
     case R of
@@ -439,15 +447,15 @@ validate_choice(Min,Context,[],List,_Cnt) ->
     if Min =:= 0 ->
 	    remove_elements(length(List), ?UNKNOWN, Context, List);
        true ->
-	    io:format("~s:~w: choice not taken\n", 
+	    io:format("~s:~w: choice not taken\n",
 		      [context_file(Context),
 		       context_line(Context)]),
 	    remove_elements(length(List), ?UNKNOWN, Context, List)
     end.
 
-%% 
+%%
 %% Check one statement:
-%% - check that the statement occures in quantities specified 
+%% - check that the statement occures in quantities specified
 %% - if it occurs then check the prefered order against List
 %%
 validate_statement(Context,?Y(Min,Max,Name),Where,List,Cnt) ->
@@ -459,7 +467,7 @@ validate_statement(Context,?Y(Min,Max,Name),Where,List,Cnt) ->
 		    NS = if N =:= 0 -> "";
 			    true -> [$\s|integer_to_list(Min-N)]
 			 end,
-		    io:format("~s:~w: warning missing~s required statement '~s'\n", 
+		    io:format("~s:~w: warning missing~s required statement '~s'\n",
 			      [context_file(Context),
 			       context_line(Context),
 			       NS,Name]),
@@ -467,7 +475,7 @@ validate_statement(Context,?Y(Min,Max,Name),Where,List,Cnt) ->
 	    end;
        is_integer(Max), N > Max ->
 	    %% FIXME find last statement Name and use line number
-	    io:format("~s:~w: warning: too many (~w) statements ~s\n", 
+	    io:format("~s:~w: warning: too many (~w) statements ~s\n",
 		      [context_file(Context),
 		       context_line(Context),
 		       (N-Max), Name]),
@@ -501,7 +509,7 @@ canonical_remove_elements(N, Name, Context, [{Stmt,Ln,Arg,_}|List]) ->
 	    canonical_remove_elements(N, Name, Context, List);
        true ->
 	    io:format("~s:~w: warning: statement '~s' not in canoical order, for context ~p:~w\n",
-		      [context_file(Context), Ln, 
+		      [context_file(Context), Ln,
 		       statement_name(Stmt),
 		       context_statement(Context),
 		       context_line(Context)
@@ -525,7 +533,7 @@ remove_elements(N, Name, Context, [E={Stmt,_Ln,Arg,_}|List]) ->
     end.
 
 
-count(Key, Val, Dict) ->			    
+count(Key, Val, Dict) ->
     Dict1 = dict:update_counter(Key, Val, Dict),
     Val1 = dict:fetch(Key, Dict1),
     {Dict,Val1}.
@@ -620,7 +628,7 @@ rule('module') ->
 			   ?Y(1,1,'namespace'),
 			   ?Y(1,1,'prefix')
 			  ]),
-		     
+
 		     ?ALL(0,none,[
 				  ?Y(0,n,'import'),
 				  ?Y(0,n,'include')
@@ -698,7 +706,7 @@ rule('submodule') ->
 rule('yang-version') ->
     {'yang-version', yang_version, []};
 rule('import') ->
-    {'import', identifier, 
+    {'import', identifier,
      ?ALL(0,none,[
 		  ?Y(1,1,'prefix'),
 		  ?Y(0,1,'revision-date')
@@ -770,7 +778,7 @@ rule('feature') ->
 		  ])};
 rule('if-feature') ->
     {'if-feature',identifier_ref,[]};
-rule('typedef') -> 
+rule('typedef') ->
     {'typedef',identifier,
      ?ALL(0,none,[
 		  ?Y(1,1,'type'),
@@ -786,7 +794,7 @@ rule('type') ->
 		   ?Y(0,1,'fraction-digits'), %% decimal64
 		   ?Y(0,1,'range'),   %% numerical
 		   ?Y(0,1,'length'),
-		   ?Y(0,n,'pattern'),  %% string 
+		   ?Y(0,n,'pattern'),  %% string
 		   ?Y(0,n,'enum'),   %% enum
 		   ?Y(0,1,'path'),   %% leafref FIXED: RFC6020 - Errata ID 2949
 		   ?Y(0,1,'base'),   %% identityref
@@ -804,7 +812,7 @@ rule('type') ->
     %% 		      ?Y(1,1,range),  %% numerical
     %% 		      ?ALL(0,none,[
     %% 				   ?Y(0,1,'length'),
-    %% 				   ?Y(0,n,'pattern')]), %% string 
+    %% 				   ?Y(0,n,'pattern')]), %% string
     %% 		      ?Y(1,n,'enum'),   %% enum
     %% 		      ?Y(1,1,'path'),   %% leafref FIXED: RFC6020 - Errata ID 2949
     %% 		      ?Y(1,1,'base'),   %% identityref
@@ -862,7 +870,7 @@ rule('bit') ->
 		 ])};
 rule('position') ->
     {'position',position_value_arg,[]};
-rule('status') -> 
+rule('status') ->
     {'status',status_arg,[]};
 rule('config') ->
     {'config',boolean,[]};
@@ -1212,7 +1220,7 @@ rule('deviate+delete') -> %% SPECIAL-3
 		  ?Y(0,n,'unique'),
 		  ?Y(0,1,'default')
 		 ])};
-rule('deviate+replace') -> %% SPECIAL-4 
+rule('deviate+replace') -> %% SPECIAL-4
     {'deviate',{const,"replace"},
      ?ALL(0,none,[
 		  ?Y(0,1,'type'),
@@ -1271,17 +1279,17 @@ arg(length_part) ->
 arg(length_boundary) ->
     {'|',[{const,"min"},{const,"max"},non_negative_integer_value]};
 
-arg(date) -> 
+arg(date) ->
     {re,"\\d{4}-\\d{2}-\\d{2}"};
 arg(schema_nodeid) ->
     {'|',[absolute_schema_nodeid, descendant_schema_nodeid]};
-arg(absolute_schema_nodeid) -> 
+arg(absolute_schema_nodeid) ->
     {'+',{',',[{re,"/"},node_identifier]}};
 arg(descendant_schema_nodeid) ->
     {',',[node_identifier,{'?',absolute_schema_nodeid}]};
 arg(node_identifier) ->
     {',',[{'?',{',',[prefix,{re,":"}]}},identifier]};
-arg(instance_identifier) -> 
+arg(instance_identifier) ->
     {'+',{',',[{re,"/"},node_identifier,{'*',predicate}]}};
 arg(predicate) ->
     {',',[{const,"\\["},optwsp,
@@ -1295,7 +1303,7 @@ arg(predicate_expr) ->
 arg(pos) -> non_negative_integer_value;
 arg(path_arg) ->
     {'|',[absolute_path,relative_path]};
-arg(absolute_path) -> 
+arg(absolute_path) ->
     {'+',{',',
 	  [{const,"/"},node_identifier,{'*',path_predicate}]}};
 arg(relative_path) ->
@@ -1320,15 +1328,15 @@ arg(rel_path_keyexpr) ->
 		 {'*',wsp},{const,"/"},optwsp]}},
 	  node_identifier]};
 arg(fraction_digits_arg) ->  {re,"(1[0-8]?)|[2-9]"};
-arg(position_value_arg) ->   
+arg(position_value_arg) ->
     non_negative_integer_value;
-arg(status_arg) ->           
+arg(status_arg) ->
     {re,"current|obsolete|deprecated"};
-arg(ordered_by_arg) ->       
+arg(ordered_by_arg) ->
     {re,"user|system"};
-arg(min_value) ->  
+arg(min_value) ->
     non_negative_integer_value;
-arg(max_value) ->  
+arg(max_value) ->
     {'|',[{const,"unbounded"},non_negative_integer_value]};
 arg(key_arg) ->
     {',',[node_identifier,{'*',{',',[sep,node_identifier]}}]};
@@ -1343,7 +1351,7 @@ arg(integer_value) ->
 	     non_negative_integer_value]};
 arg(decimal_value) ->
     {',',[integer_value,{const,"\\."},zero_integer_value]};
-arg(non_negative_integer_value) -> 
+arg(non_negative_integer_value) ->
     {'|',[{const,"0"},positive_integer_value]};
 arg(positive_integer_value) -> {',',[{re,"[1-9]"},{re,"\\d*"}]};
 arg(zero_integer_value)     -> {re,"\\d+"};
@@ -1388,7 +1396,7 @@ arg(userinfo) ->
     {'*',{'|',[unreserved,pct_encoded,sub_delims,{const,":"}]}};
 arg(host) ->
     {'|',[ip_literal,ipv4address,reg_name]};
-arg(port) -> 
+arg(port) ->
     {re,"\d*"};
 arg(ip_literal) ->
     {',',[{const,"\\["},{'|',[ipv6address,ipvfuture]},{const,"\\]"}]};
@@ -1396,7 +1404,7 @@ arg(ipvfuture) ->
     {',',[{const,"v"},{re,"[0-9A-Fa-f]+"},{re,"[.]"},
 	  {'+',{'|',[unreserved,sub_delims,{const,":"}]}}]};
 arg(ipv6address) ->
-    {'|', 
+    {'|',
      [{',',[                       {{',',[h16,{const,":"}]},{6,6}},ls32]},
       {',',[          {const,"::"},{{',',[h16,{const,":"}]},{5,5}},ls32]},
       {',',[{'?',h16},{const,"::"},{{',',[h16,{const,":"}]},{4,4}},ls32]},
@@ -1416,7 +1424,7 @@ arg(hexdig) -> {re,"[0-9A-Fa-f]"};
 arg(digit) -> {re,"[0-9]"};
 arg(alpha) -> {re,"[A-Za-z]"};
 arg(h16)   -> {hexdig,{1,4}};
-arg(ls32) -> 
+arg(ls32) ->
     {'|',[{',',[h16,{const,":"},h16]},ipv4address]};
 arg(ipv4address) ->
     {',',[dec_octet,{const,"\\."},dec_octet,{const,"\\."},
@@ -1437,7 +1445,7 @@ arg(path) ->
 	  path_empty]};
 arg(path_abempty) ->
     {'*',{',',[{const,"/"},segment]}};
-arg(path_absolute) -> 
+arg(path_absolute) ->
     {',',[{const,"/"},
 	  {'?',{',',[segment_nz,{'*',{',',[{const,"/"},segment]}}]}}]};
 arg(path_noscheme) ->
@@ -1449,13 +1457,13 @@ arg(segment) -> {'*',pchar};
 arg(segment_nz) -> {'+',pchar};
 arg(segment_nz_nc) ->
     {'+', {'|',[unreserved,pct_encoded,sub_delims,{const,"@"}]}};
-arg(pchar) -> 
+arg(pchar) ->
     {'|',[unreserved,pct_encoded,sub_delims,{const,":"},{const,"@"}]};
 arg('query') ->
     {'*',{'|',[pchar,{const,"/"},{const,"\\?"}]}};
 arg(fragment) ->
     {'*',{'|',[pchar,{const,"/"},{const,"\\?"}]}};
-arg(pct_encoded) -> 
+arg(pct_encoded) ->
     {',',[{const,"\\%"},hexdig,hexdig]};
 arg(unreserved) ->
     {'|',[alpha,digit,{const,"-"},{const,"\\."},

@@ -1,5 +1,13 @@
+%%%---- BEGIN COPYRIGHT -------------------------------------------------------
+%%%
+%%% Copyright (C) 2012 Feuerlabs, Inc. All rights reserved.
+%%%
+%%% This Source Code Form is subject to the terms of the Mozilla Public
+%%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%%% file, You can obtain one at http://mozilla.org/MPL/2.0/.
+%%%
+%%%---- END COPYRIGHT ---------------------------------------------------------
 %%% @author Tony Rogvall <tony@rogvall.se>
-%%% @copyright (C) 2012, Tony Rogvall
 %%% @doc
 %%%    YANG parser
 %%% @end
@@ -86,10 +94,10 @@ validate(File,Opts) ->
 		  Stmts = reverse(Acc0),
 		  Context = {Key,File,Ln,Opts},
 		  case yang_validate:is_valid(Context,Arg,Stmts) of
-		      true -> 
+		      true ->
 			  ok;
 		      false ->
-			  io:format("~s:~w: '~s' invalid statement\n", 
+			  io:format("~s:~w: '~s' invalid statement\n",
 				    [File,Ln,Key])
 		  end,
 		  Element = {Key,Ln,Arg,Stmts},
@@ -103,9 +111,9 @@ validate(File,Opts) ->
 -spec get_last_arg(Stmt::yang_stmt_arg(), File::string()) ->
 			  {ok,yang_stmt_arg()} |
 			  {error,any()}.
-			  
+
 get_last_arg(Stmt,File) ->
-    Fun = fun(Stmt0,_Ln,Arg,_,_) when Stmt0 =:= Stmt -> 
+    Fun = fun(Stmt0,_Ln,Arg,_,_) when Stmt0 =:= Stmt ->
 		  {true,Arg};
 	     (_Key,_Ln,_Arg,Acc,<<>>) -> {true,Acc};
 	     (_Key,_Ln,_Arg,<<>>,Acc) -> {true,Acc}
@@ -140,7 +148,7 @@ get_first_arg(Stmt,File) ->
 		      Acc0::any(), Acc::any()) ->
 			    {true,any()} | true | {ok,any()} | {error,any()})),
 	   Acc0::any(), File::string()) ->
-		  {ok,any()} | {error,any()}.		  
+		  {ok,any()} | {error,any()}.
 
 fold(Fun,Acc0,File) ->
     fold(Fun,Acc0,File,[]).
@@ -156,7 +164,7 @@ fold(Fun,Acc0,File,Opts) ->
     end.
 
 %%
-%% Fold over stmt 
+%% Fold over stmt
 %%
 %% Fun(Key,Ln,Arg,Acc0, Acc) ->
 %%   {true, Acc'}   - continue with Acc1
@@ -302,7 +310,7 @@ stmt_keyword(Bin) ->
 	<<"value">> -> 'value';
 	<<"when">> -> 'when';
 	<<"yang-version">> -> 'yang-version';
-	<<"yin-element">> -> 'yin-element';	
+	<<"yin-element">> -> 'yin-element';
 	_ ->
 	    case binary:split(Bin, <<":">>) of
 		[Prefix,Name] ->
@@ -407,7 +415,7 @@ empty(File) ->
     empty(File,[]).
 
 empty(File,Opts) ->
-    Fun = fun(_Key,_Ln,_Arg,_,Acc) -> 
+    Fun = fun(_Key,_Ln,_Arg,_,Acc) ->
 		  {true,Acc}
 	  end,
     fold(Fun, [], File, Opts).
