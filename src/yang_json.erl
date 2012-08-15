@@ -411,7 +411,7 @@ pp_json({array, []}, _I) ->
     ["[]"];
 pp_json({array, [H|T]}, I) ->
     I1 = I+1,
-    ["[", pp_json(H, I1), [[",\n", i(I1), pp_json(Term,I1)] || Term <- T], "]\n"];
+    ["[", pp_json(H, I1), [[",\n", i(I1), pp_json(Term,I1)] || Term <- T], "]"];
 pp_json(V, _I) when is_binary(V); is_list(V) ->
     io_lib:fwrite("\"~s\"", [V]);
 pp_json(V, _I) when is_integer(V) ->
