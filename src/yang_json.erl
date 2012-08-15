@@ -306,7 +306,7 @@ rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
 rpc_params([{anyxml,_,N,Is}|T], Data, Imports) ->
     [{binary_to_list(N), "", descr(Is), anyxml}
      | rpc_params(T, Data, Imports)];
-rpc_params([{leaf_list,_,N,Items}|T], Data, Is) ->
+rpc_params([{'leaf-list',_,N,Items}|T], Data, Is) ->
     L = binary_to_list(N),
     [{L, {array, [{L, "", descr(Items), type(Items, Data, Is)}]},
       descr(Items), type(Items, Data, Is)}
