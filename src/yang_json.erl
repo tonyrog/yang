@@ -65,9 +65,19 @@ to_json_type(X, {type,_,<<"enumeration">>, En} = T) ->
 	[] ->
 	    error({type_error, [X, T]})
     end;
+to_json_type(X, {type, _, <<"union">>, Ts} = Type) ->
+    to_json_type_union(Ts, X, Type);
 to_json_type(X, _) ->
     X.
 
+to_json_type_union([T|Ts], X, Type) ->
+    try to_json_type(X, T)
+    catch
+	error:_ ->
+	    to_json_type_union(Ts, X, Type)
+    end;
+to_json_type_union([], X, Type) ->
+    error({type_error, [X, Type]}).
 
 json_rpc(YangFile) ->
     json_rpc(YangFile, []).
@@ -76,10 +86,21 @@ json_rpc(YangFile, Opts) ->
     Dir = filename:dirname(YangFile),
     case read(YangFile, Ext = filename:extension(YangFile), Opts) of
 	{{ok, Y}, Ext} ->
-	    each_module(fun to_json_rpc/3, Y, {Dir, Ext, Opts});
+	    with_module(fun to_json_rpc/3, Y, {Dir, Ext, Opts});
 	{Error, _} ->
 	    Error
     end.
+
+hrl(YangFile, HrlFile) ->
+    hrl(YangFile, HrlFile, []).
+
+hrl(YangFile, HrlFile, Opts) ->
+    [{module, M, RPCs}] = json_rpc(YangFile, Opts),
+    Forms = to_hrl_forms(RPCs, M),
+    write_hrl(HrlFile, Forms, Opts).
+
+write_hrl(_HrlFile, _Forms, _Opts) ->
+    error(nyi).
 
 read(F) ->
     read(F, filename:extension(F), []).
@@ -123,12 +144,20 @@ read_open_file({ok, Bytes}, Read, Acc) ->
     read_open_file(Read(), Read, <<Acc/binary, Bytes/binary>>).
 
 
-each_module(F, [{module,_,M,Data}|Rest], Dir) ->
+with_module(F, [{module,_,M,Data}], Dir) ->
     Ms = binary_to_list(M),
-    [{module, Ms, F(Data, Dir, Ms)} | each_module(F, Rest, Dir)];
-each_module(F, [_|Rest], Dir) ->
-    each_module(F, Rest, Dir);
-each_module(_, [], _) ->
+    [{module, Ms, F(Data, Dir, Ms)}].
+
+
+to_hrl_forms(RPCs, _M) ->
+    Macros = macro_forms(RPCs, _M),
+    Records = record_defs(RPCs, _M),
+    Macros ++ Records.
+
+macro_forms(_RPCs, _M) ->
+    [].
+
+record_defs(_RPCs, _M) ->
     [].
 
 to_json_rpc(Data, Arg, M) ->
@@ -268,7 +297,8 @@ rpc_params([{uses,_,G,_}|T], Data, Imports) ->
 	[] ->
 	    [{"uses-not-found", binary_to_list(G)} | rpc_params(T, Data1, Imports)];
 	[Params] ->
-	    rpc_params(Params, Data1, Imports) ++ rpc_params(T, Data1, Imports)
+	    rpc_params(log_meta(Params, {grouping, G}), Data1, Imports)
+		++ rpc_params(T, Data1, Imports)
     end;
 rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
     [{binary_to_list(N), "", descr(Is), type(Is,Data,Imports)}
@@ -276,14 +306,26 @@ rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
 rpc_params([{anyxml,_,N,Is}|T], Data, Imports) ->
     [{binary_to_list(N), "", descr(Is), anyxml}
      | rpc_params(T, Data, Imports)];
+rpc_params([{leaf_list,_,N,Items}|T], Data, Is) ->
+    L = binary_to_list(N),
+    [{L, {array, [{L, "", descr(Items), type(Items, Data, Is)}]},
+      descr(Items), type(Items, Data, Is)}
+     | rpc_params(T, Data, Is)];
 rpc_params([{list,_,N,Items}|T], Data, Is) ->
     [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]},
+      descr(Items), type(Items, Data, Is)}
+     | rpc_params(T, Data, Is)];
+rpc_params([{container,_,N,Items}|T], Data, Is) ->
+    [{binary_to_list(N), {struct, rpc_params(Items, Data, Is)},
       descr(Items), type(Items, Data, Is)}
      | rpc_params(T, Data, Is)];
 rpc_params([_|T], Data, Is) ->
     rpc_params(T, Data, Is);
 rpc_params([], _, _) ->
     [].
+
+log_meta(Params, Info) ->
+    [{'$meta', Info}|Params].
 
 markdown(File, JSON) ->
     case file:open(File, [write]) of
@@ -397,12 +439,15 @@ type(Is, Data, Imports) ->
     case lists:keyfind(type, 1, Is) of
 	false ->
 	    undefined;
+	{type, L, <<"union">>, Ts} ->
+	    {type, L, <<"union">>, [type([T1], Data, Imports) ||
+				       {type,_,_,_} = T1 <- Ts]};
 	{type, _, T, _} = Type ->
 	    case binary:split(T, <<":">>) of
 		[Pfx, Ts] ->
 		    ImpData = orddict:fetch(Pfx, Imports),
 		    case [D1 || {typedef,_,T1,D1} <- ImpData, Ts == T1] of
-			[Def] ->
+			[_] = Def ->
 			    type(Def, ImpData, Imports);
 			[] ->
 			    Type
@@ -463,6 +508,8 @@ type_to_text({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
 				   || {enum, _, E1, I1} <- En] ];
 type_to_text({type, _, <<"boolean">>, _}) ->
     "\"1\" (true) | \"0\" (false)";
+type_to_text({type, _, <<"union">>, Ts}) ->
+    [ "One of:", [["~n* ", type_to_text(T)] || T <- Ts] ];
 type_to_text({type, _, T, _}) ->
     T;
 type_to_text(T) when is_binary(T) ->
