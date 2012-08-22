@@ -258,7 +258,7 @@ expand_uses_([], _) ->
 notification(N, Elems, Data, Imports) ->
     {notification,
      descr(Elems),
-     {struct, [{"json-rpc", "2.0"},
+     {struct, [{"jsonrpc", "2.0"},
 	       {"method", N},
 	       {"params", {struct, rpc_params(Elems, Data, Imports)}}]}}.
 
@@ -269,11 +269,11 @@ mk_rpc_pair(InOut, N, Data, Imports) ->
 	    false -> void
 	end,
     {descr(InOut),
-     {request, {struct, [{"json-rpc", "2.0"},
+     {request, {struct, [{"jsonrpc", "2.0"},
 			 {"method", N},
 			 {"id", ""},
 			 {"params", {struct, rpc_params(I, Data, Imports)}}]}},
-     {reply, {struct, [{"json-rpc", "2.0"},
+     {reply, {struct, [{"jsonrpc", "2.0"},
 		       {"id", ""},
 		       {"result",
 			case O of
