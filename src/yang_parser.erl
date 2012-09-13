@@ -23,6 +23,7 @@
 -module(yang_parser).
 
 -export([parse/1, parse/2]).
+-export([deep_parse/1, deep_parse/2]).
 -export([validate/1, validate/2]).
 -export([fold/3,fold/4]).
 -export([get_last_arg/2, get_first_arg/2]).
@@ -45,7 +46,7 @@
 
 -include("../include/yang_types.hrl").
 
--define(debug, true).
+%-define(debug, true).
 
 -ifdef(debug).
 -define(dbg(F,A), io:format((F),(A))).
@@ -79,6 +80,248 @@ parse(File,Opts) ->
 		  {true,[Element|Acc]}
 	  end,
     fold(Fun, [], File, Opts).
+
+deep_parse(File) ->
+    deep_parse(File, []).
+
+deep_parse(File, Opts) ->
+    case parse(File, Opts) of
+	{ok, Yang} ->
+	    expand(Yang, Opts);
+	{error, _} = E ->
+	    E
+    end.
+
+expand([{Type,L,M,Data}], Opts) when Type==module; Type==submodule ->
+    try begin
+	    {NewData, _Types} = expand_module(Data, M, Opts),
+	    {ok, [{Type,L,M,NewData}]}
+	end
+    catch
+	error:E ->
+	    {error, {E, erlang:get_stacktrace()}};
+	throw:T ->
+	    {error, T}
+    end.
+
+expand_module(Data, M, Opts) ->
+    Imports = imports(Data, Opts),
+    Data1 = submodules(Data, M, Opts),
+    Data2 = expand_uses(Data1, Imports),
+    Typedefs = [{T, lists:keyfind(type,1,Def)} ||
+		   {typedef, _, T, Def} <- Data2],
+    Data3 = expand_elems_(Data2, M, Typedefs, Imports),
+    {Data3, Typedefs}.
+
+imports(Data, Opts) ->
+    lists:foldl(
+      fun({import,L,M,IOpts}, Dict) ->
+	      try import_(M, IOpts, Opts, L, Dict)
+	      catch
+		  {error, E} ->
+		      throw({E, [import, L, M]})
+	      end;
+	 (_, Dict) ->
+	      Dict
+      end, orddict:new(), Data).
+
+import_(M, IOpts, Opts, L, Dict) ->
+    {Yi, Types} = parse_expand(<<M/binary, ".yang">>, L, Opts),
+    Prefix = case lists:keyfind(prefix,1,IOpts) of
+		 {prefix,_,P,_} -> P;
+		 false ->
+		     case lists:keyfind(prefix,1,Yi) of
+			 {prefix,_,P1,_} -> P1;
+			 false -> M
+		     end
+	     end,
+    orddict:store(Prefix, {M, Yi, Types}, Dict).
+
+
+parse_expand(F, L, Opts) ->
+    case parse(F, Opts) of
+	{ok, [{Mod, _, Name, Data}]} when Mod==module; Mod==submodule ->
+	    expand_module(Data, Name, Opts);
+	{error, Error} ->
+	    error({Error, [import, L, F]})
+    end.
+
+submodules(Data, M, Opts) ->
+    {Res, _} =
+	lists:mapfoldl(
+	  fun({include, L, SubM, IOpts}, Visited) ->
+		  case lists:member(SubM, Visited) of
+		      true ->
+			  error({include_loop, {L, [SubM|Visited]}});
+		      false ->
+			  Data1 = include_submodule(SubM, IOpts, Opts),
+			  {Data1, [SubM|Visited]}
+		  end;
+	     (Other, Acc) ->
+		  {[Other], Acc}
+	  end, [M], Data),
+    lists:flatten(Res).
+
+include_submodule(M, IOpts, Opts) ->
+    File = case lists:keyfind(revision_date, 1, IOpts) of
+	       {'revision_date', _, D, _} ->
+		   <<M/binary, "@", D/binary, ".yang">>;
+	       false ->
+		   <<M/binary, ".yang">>
+	   end,
+    case deep_parse(File, Opts) of
+	{ok, [{submodule, _, _, Data}]} ->
+	    Data;
+	Other ->
+	    error({include_error, [M, IOpts, Other]})
+    end.
+
+expand_uses(Data, Imports) ->
+    expand_uses(Data, Imports, Data).
+
+expand_uses([{uses,L,U,Ou}|T], Imports, Yang) ->
+    Found =
+	case binary:split(U, <<":">>) of
+	    [UName] ->
+		%% FIXME! If no prefix, we should really try to find the
+		%% 'closest' match - which seems like a vague concept.
+		%% Let's assume that there will be only one match.
+		find_grouping(UName, <<>>, Yang, L);
+	    [Pfx, UName] ->
+		case orddict:find(Pfx, Imports) of
+		    {ok, {_, Yi, _}} ->
+			find_grouping(UName, Pfx, Yi, L);
+		    error ->
+			throw({unknown_prefix, [uses, L, U]})
+		end
+	end,
+    refine(Found, Ou) ++ expand_uses(T, Imports, Yang);
+expand_uses([{Elem,L,Nm,Data}|T], Imports, Yang) ->
+    [{Elem, L, Nm, expand_uses(Data, Imports, Yang)}|
+     expand_uses(T, Imports, Yang)];
+expand_uses([], _, _) ->
+    [].
+
+expand_elems_(Data, M, Typedefs, Imports) ->
+    expand_elems_(Data, M, Data, Typedefs, Imports).
+
+expand_elems_([{type,L,Type,[]} = Elem|T], M, Yang, Typedefs, Imports) ->
+    case builtin_type(Type) of
+	true ->
+	    [Elem|expand_elems_(T, M, Yang, Typedefs, Imports)];
+	false ->
+	    ?dbg("expand_type(~p, ... ~p)~n", [Type, Typedefs]),
+	    {NewType,Def} = expand_type(Type, M, L, Typedefs, Imports),
+	    [{type,L,NewType,Def}|expand_elems_(T, M, Yang, Typedefs, Imports)]
+    end;
+expand_elems_([{Elem,L,Name,Data}|T], M, Yang, Typedefs, Imports) ->
+    [{Elem,L,Name,fix_expanded_(
+		    expand_elems_(Data, M, Yang, Typedefs, Imports))}
+     | expand_elems_(T, M, Yang, Typedefs, Imports)];
+expand_elems_([], _, _, _, _) ->
+    [].
+
+builtin_type(<<"binary"             >>) -> true;
+builtin_type(<<"bits"               >>) -> true;
+builtin_type(<<"boolean"            >>) -> true;
+builtin_type(<<"decimal64"          >>) -> true;
+builtin_type(<<"empty"              >>) -> true;
+builtin_type(<<"enumeration"        >>) -> true;
+builtin_type(<<"identityref"        >>) -> true;
+builtin_type(<<"instance-identifier">>) -> true;
+builtin_type(<<"int8"               >>) -> true;
+builtin_type(<<"int16"              >>) -> true;
+builtin_type(<<"int32"              >>) -> true;
+builtin_type(<<"int64"              >>) -> true;
+builtin_type(<<"leafref"            >>) -> true;
+builtin_type(<<"string"             >>) -> true;
+builtin_type(<<"uint8"              >>) -> true;
+builtin_type(<<"uint16"             >>) -> true;
+builtin_type(<<"uint32"             >>) -> true;
+builtin_type(<<"uint64"             >>) -> true;
+builtin_type(<<"union"              >>) -> true;
+builtin_type(_) -> false.
+
+expand_type(Type, M, L, Typedefs, Imports) ->
+    case binary:split(Type, <<":">>) of
+	[Pfx, T] ->
+	    case orddict:find(Pfx, Imports) of
+		{ok, {_, _, Types}} ->
+		    case lists:keyfind(T, 1, Types) of
+			{_, {type,_,NewType,Def}} ->
+			    {NewType, Def};
+			false ->
+			    throw({unknown_type, [M, L, Type]})
+		    end;
+		error ->
+		    throw({unknown_type, [M, L, Type]})
+	    end;
+	[_] ->
+	    case lists:keyfind(Type, 1, Typedefs) of
+		{_, {type,_,NewType,Def}} ->
+		    {NewType, Def};
+		false ->
+		    throw({unknown_type, [M, L, Type]})
+	    end
+    end.
+
+%% Quick fix to avoid having multiple 'description' elements after expanding
+%% 'uses' entries. This costs cpu cycles, of course. Should we even bother?
+fix_expanded_([{description,_,_,_} = D|T]) ->
+    [D | [E || E <- T, element(1,E) =/= description]];
+fix_expanded_([H|T]) ->
+    [H|fix_expanded_(T)];
+fix_expanded_([]) ->
+    [].
+
+
+find_grouping(G, Pfx, Yang, L) ->
+    case [Dg || {grouping,_,G1,Dg} <- Yang, G1 =:= G] of
+	[] ->
+	    throw({unknown_grouping, [uses,L,prefixed_name(Pfx, G)]});
+	[Data] ->
+	    Data
+    end.
+
+prefixed_name(<<>>, N) -> N;
+prefixed_name(Pfx, N ) -> <<Pfx/binary, ":", N/binary>>.
+
+
+refine(Elems, Opts) ->
+    Instrs = [{E, Items} || {refine,_,E,Items} <- Opts],
+    lists:foldl(fun({EName, Items}, Acc) ->
+			Elem = lists:keyfind(EName, 3, Acc),
+			EOpts = element(4, Elem),
+			NewEOpts = refine_(Items, EOpts),
+			NewElem = setelement(4, Elem, NewEOpts),
+			lists:keyreplace(EName, 3, Acc, NewElem)
+		end, Elems, Instrs).
+
+refine_([{K,_,_,_} = H|T], Opts) ->
+    refine_(T, lists:keystore(K, 1, Opts, H));
+refine_([], Opts) ->
+    Opts.
+
+augment(Elems, Opts) ->
+    Instrs = [{E, Items} || {augment,_,E,Items} <- Opts],
+    lists:foldl(fun({EName, Items}, Acc) ->
+			case lists:keymember(EName, 3, Acc) of
+			    true ->
+				throw({augment_error, EName});
+			    false ->
+				Elem = lists:keyfind(EName, 3, Acc),
+				EOpts = element(4, Elem),
+				NewEOpts = augment_(Items, EOpts),
+				NewElem = setelement(4, Elem, NewEOpts),
+				lists:keyreplace(EName, 3, Acc, NewElem)
+			end
+		end, Elems, Instrs).
+
+augment_([{K,_,_,_} = H|T], Opts) ->
+    refine_(T, lists:keystore(K, 1, Opts, H));
+augment_([], Opts) ->
+    Opts.
+
 
 %%
 %% @doc

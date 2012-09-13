@@ -22,7 +22,12 @@
 
 -module(yang).
 
--export([scan_file/1, parse_file/1, validate_file/1, json_rpc/1, check_type/2]).
+-export([scan_file/1,
+	 parse_file/1,
+	 deep_parse_file/1,
+	 validate_file/1,
+	 json_rpc/1,
+	 check_type/2]).
 -import(lists, [reverse/1]).
 
 -type  type() :: binary() | {type,integer(),binary(),list()}.
@@ -33,6 +38,9 @@ scan_file(File) ->
 
 parse_file(File) ->
     yang_parser:parse(File).
+
+deep_parse_file(File) ->
+    yang_parser:deep_parse_file(File).
 
 validate_file(File) ->
     yang_parser:validate(File).
@@ -135,3 +143,4 @@ get_value(I) ->
 is_empty(<<>>) -> true;
 is_empty([])   -> true;
 is_empty(_)    -> false.
+

@@ -106,7 +106,7 @@ read(F) ->
     read(F, filename:extension(F), []).
 
 read(F, ".yang", Opts) ->
-    {yang_parser:parse(F, Opts), ".yang"};
+    {yang_parser:deep_parse(F, Opts), ".yang"};
 read(F, ".eterm", Opts) ->
     {read_eterm(F, Opts), ".eterm"}.
 
@@ -301,23 +301,25 @@ rpc_params([{uses,_,G,_}|T], Data, Imports) ->
 		++ rpc_params(T, Data1, Imports)
     end;
 rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
-    [{binary_to_list(N), "", descr(Is), type(Is,Data,Imports)}
+    [{binary_to_list(N), "", descr(Is), [type(Is,Data,Imports),
+					 mandatory(Is)]}
      | rpc_params(T, Data, Imports)];
 rpc_params([{anyxml,_,N,Is}|T], Data, Imports) ->
-    [{binary_to_list(N), "", descr(Is), anyxml}
+    [{binary_to_list(N), "", descr(Is), [{type,anyxml},
+					 mandatory(Is)]}
      | rpc_params(T, Data, Imports)];
 rpc_params([{'leaf-list',_,N,Items}|T], Data, Is) ->
     L = binary_to_list(N),
-    [{L, {array, [{L, "", descr(Items), type(Items, Data, Is)}]},
-      descr(Items), type(Items, Data, Is)}
+    [{L, {array, [{L, "", descr(Items), [type(Items, Data, Is)]}]},
+      descr(Items), [type(Items, Data, Is), mandatory(Items)]}
      | rpc_params(T, Data, Is)];
 rpc_params([{list,_,N,Items}|T], Data, Is) ->
     [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]},
-      descr(Items), type(Items, Data, Is)}
+      descr(Items), [type(Items, Data, Is), mandatory(Items)]}
      | rpc_params(T, Data, Is)];
 rpc_params([{container,_,N,Items}|T], Data, Is) ->
     [{binary_to_list(N), {struct, rpc_params(Items, Data, Is)},
-      descr(Items), type(Items, Data, Is)}
+      descr(Items), [type(Items, Data, Is), mandatory(Items)]}
      | rpc_params(T, Data, Is)];
 rpc_params([_|T], Data, Is) ->
     rpc_params(T, Data, Is);
@@ -438,7 +440,7 @@ descr(L) ->
 type(Is, Data, Imports) ->
     case lists:keyfind(type, 1, Is) of
 	false ->
-	    undefined;
+	    {type, undefined};
 	{type, L, <<"union">>, Ts} ->
 	    {type, L, <<"union">>, [type([T1], Data, Imports) ||
 				       {type,_,_,_} = T1 <- Ts]};
@@ -460,6 +462,14 @@ type(Is, Data, Imports) ->
 			    Type
 		    end
 	    end
+    end.
+
+mandatory(Is) ->
+    case lists:keyfind(mandatory, 1, Is) of
+	{mandatory, _, Bool, _} ->
+	    {mandatory, Bool};
+	false ->
+	    {mandatory, false}
     end.
 
 descr_type(Is, Data, Imports) ->
@@ -499,23 +509,37 @@ descr_type(Is, Data, Imports) ->
 %% descr_type({type, _, T, _}) ->
 %%     T.
 
-type_to_text(undefined) ->
+type_to_text(L) ->
+    case lists:keyfind(type, 1, L) of
+	false ->
+	    [type_to_text_(undefined), "; ", mandatory_to_text(L)];
+	T ->
+	    [type_to_text_(T), "; ", mandatory_to_text(L)]
+    end.
+
+type_to_text_({type, undefined}) ->
     "untyped";
-type_to_text(anyxml) ->
+type_to_text_({type, anyxml}) ->
     "XML";
-type_to_text({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
+type_to_text_({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
     [ val2txt(I), " (", E, ")" | [ [ " | ", val2txt(I1), " (", E1, ")"]
 				   || {enum, _, E1, I1} <- En] ];
-type_to_text({type, _, <<"boolean">>, _}) ->
+type_to_text_({type, _, <<"boolean">>, _}) ->
     "\"1\" (true) | \"0\" (false)";
-type_to_text({type, _, <<"union">>, Ts}) ->
+type_to_text_({type, _, <<"union">>, Ts}) ->
     [ "One of:", [["~n* ", type_to_text(T)] || T <- Ts] ];
-type_to_text({type, _, T, _}) ->
+type_to_text_({type, _, T, _}) ->
     T;
-type_to_text(T) when is_binary(T) ->
+type_to_text_(T) when is_binary(T) ->
     T.
 
-
+mandatory_to_text(L) ->
+    case lists:keyfind(mandatory, 1, L) of
+	false ->
+	    "[<em>mandatory: false</em>]";
+	{mandatory,B} when is_boolean(B) ->
+	    ["[<em>mandatory: ", atom_to_list(B),"</em>]"]
+    end.
 
 %% enum_value(I) ->
 %%     {value,_,V,_} = lists:keyfind(value, 1, I),
