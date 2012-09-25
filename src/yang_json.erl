@@ -47,11 +47,14 @@ to_json_type(X, {type,_,<<"decimal64">>,I} = T) when is_float(X) ->
     end,
     list_to_binary(io_lib:fwrite("~." ++ integer_to_list(F) ++ "f", [X]));
 to_json_type(X, {type,_,<<"int", _/binary>>,_}) when is_integer(X) ->
-    list_to_binary(integer_to_list(X));
+    %% list_to_binary(integer_to_list(X));
+    X;
 to_json_type(X, {type,_,<<"string">>,_}) when is_atom(X) ->
     atom_to_binary(X, latin1);
 to_json_type(X, {type,_,<<"string">>,_}) when is_list(X) ->
     iolist_to_binary(X);
+to_json_type(X, {type,_,<<"string">>,_}) when is_integer(X) ->
+    list_to_binary(integer_to_list(X));
 to_json_type(_, void) -> <<"ok">>;
 to_json_type(X, {type,_,<<"uint", _/binary>>,_}) when is_integer(X), X >= 0 ->
     list_to_binary(integer_to_list(X));
