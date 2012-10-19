@@ -74,13 +74,47 @@ open(File,Opts) ->
 open_file(File, Opts) ->
     case lists:keyfind(open_hook, 1, Opts) of
 	false ->
-	    file:open(File, open_options());
+	    file_path_open(File, Opts, open_options());
 	{_, F} when is_function(F, 2) ->
 	    F(File, Opts)
     end.
 
 open_options() ->
     [read, raw, binary].
+
+file_path_open(File, Opts, OpenOpts) ->
+    case filename:basename(File) of
+        File ->
+	    case get_path(Opts) of
+		[] ->
+		    file:open(File, OpenOpts);
+		[_|_] = Dirs0 ->
+		    Dirs = ["." | [D || D <- Dirs0, D =/= "."]],
+		    case file:path_open(Dirs, File, OpenOpts) of
+			{ok, Fd, _} -> {ok, Fd};
+			Other -> Other
+		    end
+	    end;
+	_ ->
+	    %% Path already specified
+	    file:open(File, OpenOpts)
+    end.
+
+get_path(Opts) ->
+    lists:append(
+      lists:map(
+	fun({path,D}) ->
+		[D];
+	   ({lib,App,SubDir}) ->
+		case code:lib_dir(App) of
+		    {error, bad_name} ->
+			[];
+		    LibDir when is_list(LibDir) ->
+			[filename:join(LibDir, SubDir)]
+		end;
+	   (_) ->
+		[]
+	end, Opts)).
 
 
 string(Binary) when is_binary(Binary) ->
