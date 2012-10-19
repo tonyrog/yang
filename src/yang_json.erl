@@ -305,24 +305,24 @@ rpc_params([{uses,_,G,_}|T], Data, Imports) ->
     end;
 rpc_params([{leaf,_,N,Is}|T], Data, Imports) ->
     [{binary_to_list(N), "", descr(Is), [type(Is,Data,Imports),
-					 mandatory(Is)]}
+					 mandatory(Is)|default(Is)]}
      | rpc_params(T, Data, Imports)];
 rpc_params([{anyxml,_,N,Is}|T], Data, Imports) ->
     [{binary_to_list(N), "", descr(Is), [{type,anyxml},
-					 mandatory(Is)]}
+					 mandatory(Is)|default(Is)]}
      | rpc_params(T, Data, Imports)];
 rpc_params([{'leaf-list',_,N,Items}|T], Data, Is) ->
     L = binary_to_list(N),
     [{L, {array, [{L, "", descr(Items), [type(Items, Data, Is)]}]},
-      descr(Items), [type(Items, Data, Is), mandatory(Items)]}
+      descr(Items), [type(Items, Data, Is), mandatory(Items) | default(Items)]}
      | rpc_params(T, Data, Is)];
 rpc_params([{list,_,N,Items}|T], Data, Is) ->
     [{binary_to_list(N), {array, [{struct, rpc_params(Items, Data, Is)}]},
-      descr(Items), [type(Items, Data, Is), mandatory(Items)]}
+      descr(Items), [type(Items, Data, Is), mandatory(Items) | default(Items)]}
      | rpc_params(T, Data, Is)];
 rpc_params([{container,_,N,Items}|T], Data, Is) ->
     [{binary_to_list(N), {struct, rpc_params(Items, Data, Is)},
-      descr(Items), [type(Items, Data, Is), mandatory(Items)]}
+      descr(Items), [type(Items, Data, Is), mandatory(Items) | default(Items)]}
      | rpc_params(T, Data, Is)];
 rpc_params([_|T], Data, Is) ->
     rpc_params(T, Data, Is);
@@ -475,6 +475,14 @@ mandatory(Is) ->
 	    {mandatory, false}
     end.
 
+default(Is) ->
+    case lists:keyfind(default, 1, Is) of
+	{default, _, Default, _} ->
+	    [{default, Default}];
+	false ->
+	    []
+    end.
+
 descr_type(Is, Data, Imports) ->
     case lists:keyfind(type, 1, Is) of
 	false ->
@@ -512,6 +520,8 @@ descr_type(Is, Data, Imports) ->
 %% descr_type({type, _, T, _}) ->
 %%     T.
 
+type_to_text(B) when is_binary(B) ->
+    B;
 type_to_text(L) ->
     case lists:keyfind(type, 1, L) of
 	false ->
