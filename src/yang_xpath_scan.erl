@@ -52,17 +52,17 @@
 %% exported helper functions
 -export([scan_number/1]).
 
--include_lib("xmerl/include/xmerl.hrl").
-
+-define(whitespace(C), C==$\s; C==$\r; C==$\n; C==$\t).
 -define(L, 1).
+-define(B(H,T), <<H, T/binary>>).
 
 
 tokens(Str) when is_list(Str) ->
-    tokens(strip_ws(Str), []);
+    tokens(strip_ws(iolist_to_binary(Str)), []);
 tokens(Bin) when is_binary(Bin) ->
-    tokens(strip_ws(binary_to_list(Bin)), []).
+    tokens(strip_ws(Bin), []).
 
-tokens([], Acc) ->
+tokens(<<>>, Acc) ->
     lists:reverse([{'$end', ?L, '$end'}|Acc]);
 tokens(Str, Acc) ->
     case scan_token(Str, Acc) of
@@ -73,32 +73,32 @@ tokens(Str, Acc) ->
     end.
 
 %% Expr Tokens
-scan_token("(" ++ T, _A) ->  {{'(', ?L, '('}, T};
-scan_token(")" ++ T, _A) ->  {{')', ?L, ')'}, T};
-scan_token("[" ++ T, _A) ->  {{'[', ?L, '['}, T};
-scan_token("]" ++ T, _A) ->  {{']', ?L, ']'}, T};
-scan_token(".." ++ T, _A) -> {rescan,"parent::node()" ++ T} ;
+scan_token(?B("(", T), _A) ->  {{'(', ?L, '('}, T};
+scan_token(?B(")", T), _A) ->  {{')', ?L, ')'}, T};
+scan_token(?B("[", T), _A) ->  {{'[', ?L, '['}, T};
+scan_token(?B("]", T), _A) ->  {{']', ?L, ']'}, T};
+scan_token(?B("..", T), _A) -> {rescan,?B("parent::node()", T)} ;
 						% {{'..',?L,'..'}, T};
-scan_token("@" ++ T, _A) ->  {rescan,"attribute::" ++ T};
+scan_token(?B("@", T), _A) ->  {rescan,?B("attribute::", T)};
 						% {{'@',?L,'@'},T};
-scan_token("," ++ T, _A) ->  {{',', ?L, ','}, T};
-scan_token("::" ++ T, _A) -> {{'::', ?L, '::'}, T};
+scan_token(?B(",", T), _A) ->  {{',', ?L, ','}, T};
+scan_token(?B("::", T), _A) -> {{'::', ?L, '::'}, T};
 
 %% operators
-scan_token("//" ++ T, _A) -> {rescan,"/descendant-or-self::node()/" ++ T};
+scan_token(?B("//", T), _A) -> {rescan,?B("/descendant-or-self::node()/",T)};
 						% {{'//',?L,'//'},T};
-scan_token("/" ++ T, _A) ->  {{'/', ?L, '/'}, T};
-scan_token("|" ++ T, _A) ->  {{'|', ?L, '|'}, T};
-scan_token("+" ++ T, _A) ->  {{'+', ?L, '+'}, T};
-scan_token("-" ++ T, _A) ->  {{'-', ?L, '-'}, T};
-scan_token("=" ++ T, _A) ->  {{'=', ?L, '='}, T};
-scan_token("!=" ++ T, _A) -> {{'!=', ?L, '!='}, T};
-scan_token("<=" ++ T, _A) -> {{'<=', ?L, '<='}, T};
-scan_token("<" ++ T, _A) ->  {{'<', ?L, '<'}, T};
-scan_token(">=" ++ T, _A) -> {{'>=', ?L, '>='}, T};
-scan_token(">" ++ T, _A) ->  {{'>', ?L, '>'}, T};
+scan_token(?B("/", T), _A) ->  {{'/', ?L, '/'}, T};
+scan_token(?B("|" , T), _A) ->  {{'|', ?L, '|'}, T};
+scan_token(?B("+" , T), _A) ->  {{'+', ?L, '+'}, T};
+scan_token(?B("-" , T), _A) ->  {{'-', ?L, '-'}, T};
+scan_token(?B("=" , T), _A) ->  {{'=', ?L, '='}, T};
+scan_token(?B("!=" , T), _A) -> {{'!=', ?L, '!='}, T};
+scan_token(?B("<=" , T), _A) -> {{'<=', ?L, '<='}, T};
+scan_token(?B("<" , T), _A) ->  {{'<', ?L, '<'}, T};
+scan_token(?B(">=" , T), _A) -> {{'>=', ?L, '>='}, T};
+scan_token(?B(">" , T), _A) ->  {{'>', ?L, '>'}, T};
 
-scan_token("*" ++ T, A) ->
+scan_token(?B("*", T), A) ->
     Tok =
 	case A of
 	    [{X,_,_}|_] ->
@@ -114,25 +114,27 @@ scan_token("*" ++ T, A) ->
     {Tok, T};
 
 %% numbers
-scan_token(Str = [H|_], _A) when H >= $0, H =< $9 ->
+scan_token(Str = ?B(H,_), _A) when H >= $0, H =< $9 ->
     scan_number(Str);
-scan_token(Str = [$., H|_], A) when H >= $0, H =< $9 ->
+scan_token(Str = <<$., H, _/binary>>, A) when H >= $0, H =< $9 ->
     scan_number(Str, A);
-scan_token("." ++ T, _A) ->
+scan_token(?B(".", T), _A) ->
 %    {{'.', ?L, '.'}, T};
-    {rescan, "self::node()" ++ T};
+    {rescan, <<"self::node()", T/binary>>};
 
 %% Variable Reference
-scan_token([$$|T], _A) ->
+scan_token(?B($$,T), _A) ->
     {{Prefix, Local}, T1} = scan_name(T),
     case Prefix of
 	[] ->
-	    {{var_reference, ?L, list_to_atom(Local)}, T1};
+	    {{var_reference, ?L, binary_to_atom(Local, latin1)}, T1};
 	_ ->
-	    {{var_reference, ?L, list_to_atom(Prefix++":"++Local)}, T1}
+	    {{var_reference, ?L, binary_to_atom(
+				   <<Prefix/binary,":",Local/binary>>,
+				   latin1)}, T1}
     end;
 
-scan_token([H|T], _A) when H == $" ; H == $' ->
+scan_token(?B(H,T), _A) when H == $" ; H == $' ->
     {Literal, T1} = scan_literal(T, H, <<>>),
     {{literal, ?L, Literal}, T1};
 
@@ -150,20 +152,20 @@ scan_token(T, A) ->
 	    other_name(Prefix, Local, T1)
     end.
 
-operator_name([], "and", T) ->	{{'and', ?L, 'and'}, T};
-operator_name([], "or", T) ->	{{'or', ?L, 'or'}, T};
-operator_name([], "mod", T) ->	{{'mod', ?L, 'mod'}, T};
-operator_name([], "div", T) ->	{{'div', ?L, 'div'}, T}.
+operator_name(<<>>, <<"and">>, T) ->	{{'and', ?L, 'and'}, T};
+operator_name(<<>>, <<"or">> , T) ->	{{'or', ?L, 'or'}, T};
+operator_name(<<>>, <<"mod">>, T) ->	{{'mod', ?L, 'mod'}, T};
+operator_name(<<>>, <<"div">>, T) ->	{{'div', ?L, 'div'}, T}.
 
 
-other_name(Prefix, [], "*" ++ T) ->
+other_name(Prefix, <<>>, ?B("*", T)) ->
     %% [37] NameTest ::= '*' | NCName ':' '*' | QName
     {{prefix_test, ?L, Prefix}, T};
-other_name(Prefix, Local, T = "(" ++ _) ->
+other_name(Prefix, Local, T = ?B("(", _)) ->
     node_type_or_function_name(Prefix, Local, T);
-other_name(Prefix, Local, T = "::" ++ _) ->
+other_name(Prefix, Local, T = <<"::", _/binary>>) ->
     axis(Prefix, Local, T);
-other_name([], Local, T) ->
+other_name(<<>>, Local, T) ->
     {{name, ?L, {Local, <<>>, Local}}, T};
 other_name(Prefix, Local, T) ->
     {{name, ?L, {<<Prefix/binary, ":", Local/binary>>, Prefix, Local}}, T}.
@@ -171,82 +173,89 @@ other_name(Prefix, Local, T) ->
 
 
 %% node types
-node_type_or_function_name([], "comment", T) ->
+node_type_or_function_name(<<>>, <<"comment">>, T) ->
     {{node_type, ?L, comment}, T};
-node_type_or_function_name([], "text", T) ->
+node_type_or_function_name(<<>>, <<"text">>, T) ->
     {{node_type, ?L, text}, T};
-node_type_or_function_name([], "processing-instruction", T) ->
+node_type_or_function_name(<<>>, <<"processing-instruction">>, T) ->
     {{'processing-instruction', ?L, 'processing-instruction'}, T};
-node_type_or_function_name([], "node", T) ->
+node_type_or_function_name(<<>>, <<"node">>, T) ->
     {{node_type, ?L, node}, T};
 node_type_or_function_name(Prefix, Local, T) ->
-    {{function_name, ?L, list_to_atom(Prefix ++ Local)}, T}.
+    {{function_name, ?L, binary_to_atom(
+			   <<Prefix/binary, Local/binary>>,latin1)}, T}.
 
 
 %% axis names
-axis([], "ancestor-or-self", T) ->	{{axis, ?L, ancestor_or_self}, T};
-axis([], "ancestor", T) ->		{{axis, ?L, ancestor}, T};
-axis([], "attribute", T) ->		{{axis, ?L, attribute}, T};
-axis([], "child", T) ->			{{axis, ?L, child}, T};
-axis([], "descendant-or-self", T) ->	{{axis, ?L, descendant_or_self}, T};
-axis([], "descendant", T) ->		{{axis, ?L, descendant}, T};
-axis([], "following-sibling", T) ->	{{axis, ?L, following_sibling}, T};
-axis([], "following", T) ->		{{axis, ?L, following}, T};
-axis([], "namespace", T) ->		{{axis, ?L, namespace}, T};
-axis([], "parent", T) ->		{{axis, ?L, parent}, T};
-axis([], "preceding-sibling", T) ->	{{axis, ?L, preceding_sibling}, T};
-axis([], "preceding", T) ->		{{axis, ?L, preceding}, T};
-axis([], "self", T) ->			{{axis, ?L, self}, T}.
+axis(<<>>, <<"ancestor-or-self">>, T) ->   {{axis, ?L, ancestor_or_self}, T};
+axis(<<>>, <<"ancestor">>, T) ->           {{axis, ?L, ancestor}, T};
+axis(<<>>, <<"attribute">>, T) ->          {{axis, ?L, attribute}, T};
+axis(<<>>, <<"child">>, T) ->              {{axis, ?L, child}, T};
+axis(<<>>, <<"descendant-or-self">>, T) -> {{axis, ?L, descendant_or_self}, T};
+axis(<<>>, <<"descendant">>, T) ->         {{axis, ?L, descendant}, T};
+axis(<<>>, <<"following-sibling">>, T) ->  {{axis, ?L, following_sibling}, T};
+axis(<<>>, <<"following">>, T) ->          {{axis, ?L, following}, T};
+axis(<<>>, <<"namespace">>, T) ->          {{axis, ?L, namespace}, T};
+axis(<<>>, <<"parent">>, T) ->             {{axis, ?L, parent}, T};
+axis(<<>>, <<"preceding-sibling">>, T) ->  {{axis, ?L, preceding_sibling}, T};
+axis(<<>>, <<"preceding">>, T) ->          {{axis, ?L, preceding}, T};
+axis(<<>>, <<"self">>, T) ->               {{axis, ?L, self}, T}.
 
 
 
 
-scan_literal([H|T], H, Acc) ->
+scan_literal(?B(H,T), H, Acc) ->
     {Acc, T};
-scan_literal([H|T], Delim, Acc) ->
+scan_literal(?B(H,T), Delim, Acc) ->
     scan_literal(T, Delim, <<Acc/binary, H:8>>).
 
 
-scan_name([H1, H2 | T]) when H1 == $: ; H1 == $_ ->
+scan_name(<<H1, H2, T/binary>>) when H1 == $: ; H1 == $_ ->
     if ?whitespace(H2) ->
 	    exit({invalid_name, [H1, H2, '...']});
        true ->
 	    scan_prefix(T, <<H2:8, H1:8>>)
     end;
-scan_name([H|T]) ->
+scan_name(?B(H,T) = B) ->
     case xmerl_lib:is_letter(H) of
 	true ->
 	    scan_prefix(T, <<H:8>>);
 	false ->
-	    exit({invalid_name, lists:sublist([H|T], 1, 6)})
+	    exit({invalid_name, first(B, 5)})
     end;
 scan_name(Str) ->
-    exit({invalid_name, lists:sublist(Str, 1, 6)}).
+    exit({invalid_name, first(Str, 5)}).
 
-scan_prefix([], Acc) ->
-    {{[], Acc}, []};
-scan_prefix(Str = [H|_], Acc) when ?whitespace(H) ->
-    {{[], Acc}, Str};
-scan_prefix(T = "::" ++ _, Acc) ->
+first(B, N) when byte_size(B) =< N ->
+    B;
+first(B, N) when is_binary(B), is_integer(N), N > 0 ->
+    binary:part(B, 0, N-1).
+
+
+scan_prefix(<<>>, Acc) ->
+    {{<<>>, Acc}, <<>>};
+scan_prefix(Str = ?B(H,_), Acc) when ?whitespace(H) ->
+    {{<<>>, Acc}, Str};
+scan_prefix(T = ?B("::", _), Acc) ->
     %% This is the next token
-    {{[], Acc}, T};
-scan_prefix(":" ++ T, Acc) ->
+    {{<<>>, Acc}, T};
+scan_prefix(?B(":", T), Acc) ->
     {LocalPart, T1} = scan_local_part(T, <<>>),
     Prefix = Acc,
     {{Prefix, LocalPart}, T1};
-scan_prefix(Str = [H|T], Acc) ->
+scan_prefix(Str = ?B(H,T), Acc) ->
     case xmerl_lib:is_namechar(H) of
 	true ->
 	    scan_prefix(T, <<Acc/binary, H:8>>);
 	false ->
-	    {{[], Acc}, Str}
+	    {{<<>>, Acc}, Str}
     end.
 
-scan_local_part([], Acc) ->
-    {Acc, []};
-scan_local_part(Str = [H|_], Acc) when ?whitespace(H) ->
+scan_local_part(<<>>, Acc) ->
+    {Acc, <<>>};
+scan_local_part(Str = ?B(H,_), Acc) when ?whitespace(H) ->
     {Acc, Str};
-scan_local_part(Str = [H|T], Acc) ->
+scan_local_part(Str = ?B(H,T), Acc) ->
     case xmerl_lib:is_namechar(H) of
 	true ->
 	    scan_local_part(T, <<Acc/binary, H:8>>);
@@ -256,33 +265,40 @@ scan_local_part(Str = [H|T], Acc) ->
 
 
 scan_number(T) ->
+    %% Here we use a list accumulator, since there are no binary_to_<number>()
+    %% conversion routines. Not sure which is most efficient, though.
     scan_number(T, []).
 
-scan_number([], Acc) ->
+scan_number(<<>>, Acc) ->
     {{number, ?L, list_to_integer(lists:reverse(Acc))}, []};
-scan_number("." ++ T, []) ->
+scan_number(?B(".", T), []) ->
     {Digits, T1} = scan_digits(T, ".0"),
     Number = list_to_float(Digits),
     {{number, ?L, Number}, T1};
-scan_number("." ++ T, Acc) ->
+scan_number(?B(".", T), Acc) ->
     {Digits, T1} = scan_digits(T, "." ++ Acc),
     Number = list_to_float(Digits),
     {{number, ?L, Number}, T1};
-scan_number([H|T], Acc) when H >= $0, H =< $9 ->
+scan_number(?B(H,T), Acc) when H >= $0, H =< $9 ->
     scan_number(T, [H|Acc]);
 scan_number(T, Acc) ->
     {{number, ?L, list_to_integer(lists:reverse(Acc))}, T}.
 
-scan_digits([], Acc) ->
+scan_digits(<<>>, Acc) ->
     {lists:reverse(Acc), []};
-scan_digits([H|T], Acc) when H >= $0, H =< $9 ->
+scan_digits(?B(H,T), Acc) when H >= $0, H =< $9 ->
     scan_digits(T, [H|Acc]);
 scan_digits(T, Acc) ->
     {lists:reverse(Acc), T}.
 
-
-strip_ws([H|T]) when ?whitespace(H) ->
-    strip_ws(T);
+strip_ws(<<" ", T/binary>>) -> strip_ws(T);
+strip_ws(<<"\n", T/binary>>) -> strip_ws(T);
+strip_ws(<<"\r\n", T/binary>>) -> strip_ws(T);
+strip_ws(<<"\t", T/binary>>) -> strip_ws(T);
+%% strip_ws(<<H, T/binary>>) when ?whitespace(H) ->
+%%     strip_ws(T);
+%% strip_ws([H|T]) when ?whitespace(H) ->
+%%     strip_ws(T);
 strip_ws(T) ->
     T.
 

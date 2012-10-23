@@ -85,14 +85,21 @@ to_json_type_union([], X, Type) ->
 json_rpc(YangFile) ->
     json_rpc(YangFile, []).
 
-json_rpc(YangFile, Opts) ->
+json_rpc(YangFile, Opts0) ->
     Dir = filename:dirname(YangFile),
+    Opts = add_path(Dir, Opts0),
     case read(YangFile, Ext = filename:extension(YangFile), Opts) of
 	{{ok, Y}, Ext} ->
 	    with_module(fun to_json_rpc/3, Y, {Dir, Ext, Opts});
 	{Error, _} ->
 	    Error
     end.
+
+add_path(".", Opts) ->
+    Opts;
+add_path(D, Opts) ->
+    Opts ++ [{path, D}].
+
 
 hrl(YangFile, HrlFile) ->
     hrl(YangFile, HrlFile, []).
@@ -177,10 +184,10 @@ to_json_rpc(Data, Arg, M) ->
 	      Acc
       end, [], Data1).
 
-imports(Data, {Dir,Ext,Opts}) ->
+imports(Data, {_Dir,Ext,Opts}) ->
     lists:foldl(
       fun({import,_,F,[{prefix,_,Pfx,_}|_]}, Acc) ->
-	      File = filename:join(Dir, binary_to_list(F)) ++ Ext,
+	      File = binary_to_list(F) ++ Ext,
 	      case read(File, Ext, Opts) of
 		  {{ok, Y},_} ->
 		      case [D || {module,_,N,D} <- Y,
