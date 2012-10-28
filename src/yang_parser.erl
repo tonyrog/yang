@@ -87,9 +87,18 @@ deep_parse(File) ->
 deep_parse(File, Opts) ->
     case parse(File, Opts) of
 	{ok, Yang} ->
-	    expand(Yang, Opts);
+	    expand(Yang, set_cur(filename:absname(
+				   filename:dirname(File)), Opts));
 	{error, _} = E ->
 	    E
+    end.
+
+set_cur(D, Opts) ->
+    case lists:keyfind(cur, 1, Opts) of
+	{_, _} ->
+	    Opts;
+	false ->
+	    [{cur, D}|Opts]
     end.
 
 expand([{Type,L,M,Data}], Opts) when Type==module; Type==submodule ->
@@ -214,6 +223,15 @@ expand_elems_([{type,L,Type,[]} = Elem|T], M, Yang, Typedefs, Imports) ->
 	    {NewType,Def} = expand_type(Type, M, L, Typedefs, Imports),
 	    [{type,L,NewType,Def}|expand_elems_(T, M, Yang, Typedefs, Imports)]
     end;
+expand_elems_([{{Pfx,Extension}, L, Arg, Data}|T], M, Yang, Typedefs, Imports) ->
+    case orddict:find(Pfx, Imports) of
+	{ok, {Mp,_,_}} ->
+	    [{{Mp,Extension},L,Arg,
+	      expand_elems_(Data, M, Yang, Typedefs, Imports)}
+	     | expand_elems_(T, M, Yang, Typedefs, Imports)];
+	error ->
+	    throw({unknown_prefix, [extension, L, Pfx]})
+    end;
 expand_elems_([{Elem,L,Name,Data}|T], M, Yang, Typedefs, Imports) ->
     [{Elem,L,Name,fix_expanded_(
 		    expand_elems_(Data, M, Yang, Typedefs, Imports))}
@@ -302,25 +320,25 @@ refine_([{K,_,_,_} = H|T], Opts) ->
 refine_([], Opts) ->
     Opts.
 
-augment(Elems, Opts) ->
-    Instrs = [{E, Items} || {augment,_,E,Items} <- Opts],
-    lists:foldl(fun({EName, Items}, Acc) ->
-			case lists:keymember(EName, 3, Acc) of
-			    true ->
-				throw({augment_error, EName});
-			    false ->
-				Elem = lists:keyfind(EName, 3, Acc),
-				EOpts = element(4, Elem),
-				NewEOpts = augment_(Items, EOpts),
-				NewElem = setelement(4, Elem, NewEOpts),
-				lists:keyreplace(EName, 3, Acc, NewElem)
-			end
-		end, Elems, Instrs).
+%% augment(Elems, Opts) ->
+%%     Instrs = [{E, Items} || {augment,_,E,Items} <- Opts],
+%%     lists:foldl(fun({EName, Items}, Acc) ->
+%% 			case lists:keymember(EName, 3, Acc) of
+%% 			    true ->
+%% 				throw({augment_error, EName});
+%% 			    false ->
+%% 				Elem = lists:keyfind(EName, 3, Acc),
+%% 				EOpts = element(4, Elem),
+%% 				NewEOpts = augment_(Items, EOpts),
+%% 				NewElem = setelement(4, Elem, NewEOpts),
+%% 				lists:keyreplace(EName, 3, Acc, NewElem)
+%% 			end
+%% 		end, Elems, Instrs).
 
-augment_([{K,_,_,_} = H|T], Opts) ->
-    refine_(T, lists:keystore(K, 1, Opts, H));
-augment_([], Opts) ->
-    Opts.
+%% augment_([{K,_,_,_} = H|T], Opts) ->
+%%     refine_(T, lists:keystore(K, 1, Opts, H));
+%% augment_([], Opts) ->
+%%     Opts.
 
 
 %%

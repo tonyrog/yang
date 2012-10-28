@@ -292,6 +292,9 @@ mk_rpc_pair(InOut, N, Data, Imports) ->
 				{struct, rpc_params(O, Data, Imports)}
 			end}]}}}.
 
+extensions(InOut) ->
+    [{{Prefix,Keyword},Arg,Opts} || {{Prefix,Keyword},_,Arg,Opts} <- InOut].
+
 
 rpc_params([{uses,_,G,_}|T], Data, Imports) ->
     {Where, GrpName} = case re:split(G, <<":">>) of
@@ -355,23 +358,25 @@ markdown([{module, M, RPCs}|T]) ->
 markdown([]) ->
     [].
 
-markdown_rpcs([{Not, {notification, Descr, Msg}} | T]) ->
+markdown_rpcs([{Not, {notification, Info, Msg}} | T]) ->
     ["#### Notification: ", Not, "\n",
      "```json\n", pp_json(Msg), "\n```\n\n",
-     case Descr of
+     case proplists:get_value(description, Info, "") of
 	 "" -> "";
-	 _ ->
+	 Descr ->
 	     [Descr, "\n\n"]
      end,
+     markdown_extensions(Info), "\n\n",
      markdown_descriptions(Msg), "\n\n" | markdown_rpcs(T)];
-markdown_rpcs([{RPC, {Descr, {request, Req}, {reply, Rep}}} | T]) ->
+markdown_rpcs([{RPC, {Info, {request, Req}, {reply, Rep}}} | T]) ->
     ["### RPC: ", RPC, "\n\n",
      "#### Request\n", "```json\n", pp_json(Req), "\n```\n\n",
-     case Descr of
+     case proplists:get_value(description, Info, "") of
 	 "" -> "";
-	 _ ->
+	 Descr ->
 	     [Descr, "\n\n"]
      end,
+     markdown_extensions(Info), "\n\n",
      markdown_descriptions(Req), "\n\n",
      "#### Reply\n", "```json\n", pp_json(Rep), "\n```\n\n",
      markdown_descriptions(Rep), "\n\n" | markdown_rpcs(T)];
@@ -383,13 +388,27 @@ markdown_descriptions(Msg) ->
 	[] -> [];
 	[{K,{D,T}}|Tail] ->
 	    ["**descriptions**\n",
-	     "<dl><dt>", K, "</dt>\n", "<dd>", D,
+	     "<dl><dt>", K, "</dt>\n", "<dd>", descr_text(D),
 	     " (<b>type:</b> ", type_to_text(T), ")", "</dd>",
-	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1,
+	     [["\n<dt>", K1, "</dt>\n", "<dd>", descr_text(D1),
 	       " (<b>type:</b> ", type_to_text(T1), ")", "</dd>"]
 	      || {K1,{D1,T1}} <- Tail],
 	     "\n</dl>\n\n"]
     end.
+
+markdown_extensions(Info) ->
+    case [{M,E,Arg} || {{M,E},Arg,_} <- Info] of
+	[] -> [];
+	[_|_] = Exts ->
+	    ["**extensions**\n",
+	     "<dl>\n",
+	     [["<dt>", M, ":", E, "</dt>", "<dd>", Arg, "</dd>\n"]
+	      || {M,E,Arg} <- Exts],
+	     "</dl>\n"]
+    end.
+
+descr_text(D) ->
+    proplists:get_value(description,D,"").
 
 collect_descriptions({struct, L}, Acc) ->
     lists:foldl(fun collect_descriptions/2, Acc, L);
@@ -442,9 +461,9 @@ pp_json_(K,V,I) ->
 descr(L) ->
     case lists:keyfind(description, 1, L) of
 	false ->
-	    "";
+	    [{description, ""}|extensions(L)];
 	{_, _, B,_} ->
-	    binary_to_list(B)
+	    [{description, binary_to_list(B)}|extensions(L)]
     end.
 
 type(Is, Data, Imports) ->

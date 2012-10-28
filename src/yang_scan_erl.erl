@@ -89,6 +89,8 @@ file_path_open(File, Opts, OpenOpts) ->
 		[] ->
 		    file:open(File, OpenOpts);
 		[_|_] = Dirs0 ->
+		    io:fwrite("~p:get_path() -> ~p~nCWD = ~p~nOpts = ~p~n",
+			      [?MODULE, Dirs0, element(2,file:get_cwd()), Opts]),
 		    Dirs = ["." | [D || D <- Dirs0, D =/= "."]],
 		    case file:path_open(Dirs, File, OpenOpts) of
 			{ok, Fd, _} -> {ok, Fd};
@@ -104,7 +106,7 @@ get_path(Opts) ->
     lists:append(
       lists:map(
 	fun({path,D}) ->
-		[D];
+		[fix_reldir(D, Opts)];
 	   ({lib,App,SubDir}) ->
 		case code:lib_dir(App) of
 		    {error, bad_name} ->
@@ -116,6 +118,13 @@ get_path(Opts) ->
 		[]
 	end, Opts)).
 
+fix_reldir(D, Opts) ->
+    case lists:keyfind(cwd, 1, Opts) of
+	{_, CWD} ->
+	    filename:absname(D, CWD);
+	false ->
+	    D
+    end.
 
 string(Binary) when is_binary(Binary) ->
     {ok, #yang_scan { buffer=Binary }};
