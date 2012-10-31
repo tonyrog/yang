@@ -58,12 +58,17 @@ to_json_type(X, {type,_,<<"string">>,_}) when is_integer(X) ->
 to_json_type(_, void) -> <<"ok">>;
 to_json_type(X, {type,_,<<"uint", _/binary>>,_}) when is_integer(X), X >= 0 ->
     list_to_binary(integer_to_list(X));
-to_json_type(false, {type,_,<<"boolean">>,_}) -> <<"0">>;
-to_json_type(true, {type,_,<<"boolean">>,_}) -> <<"1">>;
+to_json_type(false, {type,_,<<"boolean">>,_}) -> false;
+to_json_type(true, {type,_,<<"boolean">>,_}) -> true;
 to_json_type(X, {type,_,<<"enumeration">>, En} = T) ->
     case [lists:keyfind(value,1,I1) || {enum,_,E1,I1} <- En,
 				       E1 == X] of
-	[{value,_,V,_}] ->
+	[{value,_,V,_}] when is_binary(V) ->
+	    %% The enum value is specified as an integer, but represented by
+	    %% yang_parser as a binary.
+	    list_to_integer(binary_to_list(V));
+	[{value,_,V,_}] when is_integer(V) ->
+	    %% Just in case the above should ever change...
 	    V;
 	[] ->
 	    error({type_error, [X, T]})
@@ -560,11 +565,11 @@ type_to_text_({type, undefined}) ->
     "untyped";
 type_to_text_({type, anyxml}) ->
     "XML";
-type_to_text_({type, _, <<"enumeration">>, [{enum,_,E,I} | _] = En}) ->
+type_to_text_({type, _, <<"enumeration">>, [{enum,_,E,I} | EnT]}) ->
     [ val2txt(I), " (", E, ")" | [ [ " | ", val2txt(I1), " (", E1, ")"]
-				   || {enum, _, E1, I1} <- En] ];
+				   || {enum, _, E1, I1} <- EnT] ];
 type_to_text_({type, _, <<"boolean">>, _}) ->
-    "\"1\" (true) | \"0\" (false)";
+    "true | false";
 type_to_text_({type, _, <<"union">>, Ts}) ->
     [ "One of:", [["~n* ", type_to_text(T)] || T <- Ts] ];
 type_to_text_({type, _, T, _}) ->
@@ -585,7 +590,7 @@ mandatory_to_text(L) ->
 %%     V.
 val2txt(I) ->
     {value,_,V,_} = lists:keyfind(value, 1, I),
-    ["\"", binary_to_list(V), "\""].
+    binary_to_list(V).
 
 i(I) ->
     lists:duplicate(I,$\s).
