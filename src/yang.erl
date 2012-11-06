@@ -28,6 +28,7 @@
 	 validate_file/1,
 	 json_rpc/1,
 	 check_type/2]).
+-export([bin_hook/1]).
 -import(lists, [reverse/1]).
 
 -type  type() :: binary() | {type,integer(),binary(),list()}.
@@ -47,6 +48,32 @@ validate_file(File) ->
 
 json_rpc(YangFile) ->
     yang_json:json_rpc(YangFile).
+
+
+bin_hook(L) when is_list(L) ->
+    fun(F, Opts) ->
+	    case lists:keyfind(filename:basename(F), 1, L) of
+		{_, B} when is_binary(B) ->
+		    bin_open_file(F, B, Opts);
+		{_, Fn} when is_function(Fn, 0) ->
+		    bin_open_file(F, Fn(), Opts);
+		false ->
+		    {error, enoent}
+	    end
+    end.
+
+bin_open_file(F, Bin, _Opts) when is_binary(Bin) ->
+    case file:open(F, [read, write, ram, binary]) of
+	{ok, Fd} ->
+	    ok = file:write(Fd, Bin),
+	    {ok,0} = file:position(Fd,bof),
+            {ok, Fd};
+        {error, _} ->
+            {error, enoent}
+    end;
+bin_open_file(_, _, _) ->
+    {error, einval}.
+
 
 -spec check_type(any(), type()) -> {true, any()} | false.
 %% @spec check_type(Value, Type) -> {true, ConvertedValue} | false

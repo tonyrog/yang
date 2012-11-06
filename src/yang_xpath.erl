@@ -83,7 +83,7 @@ child({name, {AbsName, _Pfx, Name}}, Args, Ch) ->
 
 match_args(_, []) ->
     true;
-match_args(X, Args) ->
+match_args(_X, Args) ->
     case [A || A <- Args,
 	       element(1,A) =/= pred] of
 	[] ->

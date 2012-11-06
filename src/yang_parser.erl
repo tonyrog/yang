@@ -134,15 +134,15 @@ expand_module(Type, Data, M, Opts, Ps) ->
 	     end,
     Imports = imports(Data, Opts, Ps),
     Data1 = submodules(Data, OwnPfx, M, Opts, Ps),
-    Data2 = expand_uses(Data1, OwnPfx, Imports, Ps),
+    %% Data2 = expand_uses(Data1, OwnPfx, Imports, Ps),
     Typedefs = [{T, lists:keyfind(type,1,Def)} ||
-		   {typedef, _, T, Def} <- Data2],
+		   {typedef, _, T, Def} <- Data1],
     ModRec = #mod{prefix = OwnPfx,
 		  module = M,
 		  typedefs = Typedefs,
 		  imports = Imports,
-		  data = Data2},
-    Data3 = expand_elems_(Data2, ModRec),
+		  data = Data1},
+    Data3 = expand_elems_(Data1, ModRec, Ps),
     {Data3, Typedefs}.
 
 imports(Data, Opts, Ps) ->
@@ -211,10 +211,37 @@ include_submodule(M, IOpts, Opts, Ps) ->
 	    error({include_error, [M, IOpts, Other]})
     end.
 
-expand_uses(Data, OwnPfx, Imports, Ps) ->
-    expand_uses(Data, OwnPfx, Imports, Data, Ps).
+%% expand_uses(Data, OwnPfx, Imports, Ps) ->
+%%     expand_uses(Data, OwnPfx, Imports, Data, Ps).
 
-expand_uses([{uses,L,U,Ou}|T], OwnPfx, Imports, Yang, Ps) ->
+%% expand_uses([{uses,L,U,Ou}|T], OwnPfx, Imports, Yang, Ps) ->
+%%     Found =
+%% 	case binary:split(U, <<":">>) of
+%% 	    [UName] ->
+%% 		%% FIXME! If no prefix, we should really try to find the
+%% 		%% 'closest' match - which seems like a vague concept.
+%% 		%% Let's assume that there will be only one match.
+%% 		find_grouping(UName, <<>>, Yang, L, Ps);
+%% 	    [OwnPfx, UName] ->
+%% 		find_grouping(UName, OwnPfx, Yang, L, Ps);
+%% 	    [Pfx, UName] ->
+%% 		case orddict:find(Pfx, Imports) of
+%% 		    {ok, #mod{data = Yi}} ->
+%% 			find_grouping(UName, Pfx, Yi, L, []);
+%% 		    error ->
+%% 			throw({unknown_prefix, [uses, L, U]})
+%% 		end
+%% 	end,
+%%     refine(Found, Ou) ++ expand_uses(T, OwnPfx, Imports, Yang, Ps);
+%% expand_uses([{Elem,L,Nm,Data}|T], OwnPfx, Imports, Yang, Ps) ->
+%%     [{Elem, L, Nm, expand_uses(Data, OwnPfx, Imports, Yang, Ps)}|
+%%      expand_uses(T, OwnPfx, Imports, Yang, Ps)];
+%% expand_uses([], _, _, _, _) ->
+%%     [].
+
+expand_elems_([{uses,L,U,Ou}|T], #mod{data = Yang,
+				      prefix = OwnPfx,
+				      imports = Imports} = ModR, Ps) ->
     Found =
 	case binary:split(U, <<":">>) of
 	    [UName] ->
@@ -226,40 +253,41 @@ expand_uses([{uses,L,U,Ou}|T], OwnPfx, Imports, Yang, Ps) ->
 		find_grouping(UName, OwnPfx, Yang, L, Ps);
 	    [Pfx, UName] ->
 		case orddict:find(Pfx, Imports) of
-		    {ok, {_, Yi, _}} ->
+		    {ok, #mod{data = Yi}} ->
 			find_grouping(UName, Pfx, Yi, L, []);
 		    error ->
 			throw({unknown_prefix, [uses, L, U]})
 		end
 	end,
-    refine(Found, Ou) ++ expand_uses(T, Imports, Yang, Ps);
-expand_uses([{Elem,L,Nm,Data}|T], OwnPfx, Imports, Yang, Ps) ->
-    [{Elem, L, Nm, expand_uses(Data, OwnPfx, Imports, Yang, Ps)}|
-     expand_uses(T, OwnPfx, Imports, Yang, Ps)];
-expand_uses([], _, _, _, _) ->
-    [].
-
-expand_elems_([{type,L,Type,[]} = Elem|T], ModR) ->
+    refine(Found, Ou) ++ expand_elems_(T, ModR, Ps);
+expand_elems_([{type,L,Type,[]} = Elem|T], ModR, Ps) ->
     case builtin_type(Type) of
 	true ->
-	    [Elem|expand_elems_(T, ModR)];
+	    [Elem|expand_elems_(T, ModR, Ps)];
 	false ->
 	    ?dbg("expand_type(~p, ... ~p)~n", [Type, ModR#mod.typedefs]),
 	    {NewType,Def} = expand_type(Type, L, ModR),
-	    [{type,L,NewType,Def}|expand_elems_(T, ModR)]
+	    [{type,L,NewType,
+	      [{{<<"$yang">>,<<"origtype">>},L,Type,[]}|Def]}|
+	     expand_elems_(T, ModR, Ps)]
     end;
-expand_elems_([{{Pfx,Extension}, L, Arg, Data}|T], ModR) ->
+expand_elems_([{{<<"$yang">>,_}, _, _, _} = IntStmt |T], ModR, Ps) ->
+    [IntStmt | expand_elems_(T, ModR, Ps)];
+expand_elems_([{{Pfx,Extension}, L, Arg, Data}|T], ModR, Ps) ->
     case find_prefix(Pfx, ModR) of
 	false ->
-	    throw({unknown_prefix, [extension, L, Pfx]});
+	    throw({unknown_prefix, [extension, L, Pfx, Extension]});
 	#mod{module = Mp} ->
-	    [{{Mp,Extension},L,Arg, expand_elems_(Data, ModR)}
-	     | expand_elems_(T, ModR)]
+	    [{{Mp,Extension},L,Arg, expand_elems_(Data, ModR, Ps)}
+	     | expand_elems_(T, ModR, Ps)]
     end;
-expand_elems_([{Elem,L,Name,Data}|T], ModR) ->
-    [{Elem,L,Name,fix_expanded_(expand_elems_(Data, ModR))}
-     | expand_elems_(T, ModR)];
-expand_elems_([], _) ->
+%% expand_elems_([{{ext,_,_},_,_,_} = Ext|T], ModR) ->
+%%     %% already expanded
+%%     [Ext| expand_elems_(T, ModR)];
+expand_elems_([{Elem,L,Name,Data}|T], ModR, Ps) ->
+    [{Elem,L,Name,fix_expanded_(expand_elems_(Data, ModR, Ps))}
+     | expand_elems_(T, ModR, Ps)];
+expand_elems_([], _, _) ->
     [].
 
 find_prefix(Pfx, #mod{prefix = Pfx} = ModR) ->
@@ -268,7 +296,7 @@ find_prefix(Pfx, #mod{imports = Imports}) ->
     case orddict:find(Pfx, Imports) of
 	error ->
 	    false;
-	ModI ->
+	{ok, #mod{} = ModI} ->
 	    ModI
     end.
 
@@ -308,7 +336,7 @@ expand_type(Type, L, #mod{module = M,
 	    end;
 	[Pfx, T] ->
 	    case orddict:find(Pfx, Imports) of
-		{ok, {_, _, Types}} ->
+		{ok, #mod{typedefs = Types}} ->
 		    case lists:keyfind(T, 1, Types) of
 			{_, {type,_,NewType,Def}} ->
 			    {NewType, Def};
