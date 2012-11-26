@@ -195,7 +195,8 @@ expand_uses([{uses,L,U,Ou}|T], Imports, Yang) ->
 			throw({unknown_prefix, [uses, L, U]})
 		end
 	end,
-    refine(Found, Ou) ++ expand_uses(T, Imports, Yang);
+    Refined = refine(Found, Ou),
+    expand_uses(Refined, Imports, Yang) ++ expand_uses(T, Imports, Yang);
 expand_uses([{Elem,L,Nm,Data}|T], Imports, Yang) ->
     [{Elem, L, Nm, expand_uses(Data, Imports, Yang)}|
      expand_uses(T, Imports, Yang)];
@@ -288,40 +289,34 @@ prefixed_name(Pfx, N ) -> <<Pfx/binary, ":", N/binary>>.
 
 
 refine(Elems, Opts) ->
-    Instrs = [{E, Items} || {refine,_,E,Items} <- Opts],
-    lists:foldl(fun({EName, Items}, Acc) ->
-			Elem = lists:keyfind(EName, 3, Acc),
-			EOpts = element(4, Elem),
-			NewEOpts = refine_(Items, EOpts),
-			NewElem = setelement(4, Elem, NewEOpts),
-			lists:keyreplace(EName, 3, Acc, NewElem)
-		end, Elems, Instrs).
+    lists:foldr(fun refine_instr/2, Elems, Opts).
+
+refine_instr({Op,_,E,Items}, Elems)
+  when Op == refine; Op == augment ->
+    ENames = binary:split(E, <<$/>>, [global]),
+    refine_list(Op, ENames, Items, Elems);
+refine_instr(_, Elems) ->
+    Elems.
+
+refine_list(refine, [], Items, EOpts) ->
+    refine_(Items, EOpts);
+refine_list(augment, [], Items, []) ->
+    Items;
+refine_list(Op, [EName|T], Items, EOpts) ->
+	case lists:keyfind(EName, 3, EOpts) of
+	    Elem when is_tuple(Elem) ->
+		NextEOpts = element(4, Elem),
+		NewEOpts = refine_list(Op, T, Items, NextEOpts),
+		NewElem = setelement(4, Elem, NewEOpts),
+		lists:keyreplace(EName, 3, EOpts, NewElem);
+	    false ->
+		throw({refine_error, EName})
+	end.
 
 refine_([{K,_,_,_} = H|T], Opts) ->
     refine_(T, lists:keystore(K, 1, Opts, H));
 refine_([], Opts) ->
     Opts.
-
-augment(Elems, Opts) ->
-    Instrs = [{E, Items} || {augment,_,E,Items} <- Opts],
-    lists:foldl(fun({EName, Items}, Acc) ->
-			case lists:keymember(EName, 3, Acc) of
-			    true ->
-				throw({augment_error, EName});
-			    false ->
-				Elem = lists:keyfind(EName, 3, Acc),
-				EOpts = element(4, Elem),
-				NewEOpts = augment_(Items, EOpts),
-				NewElem = setelement(4, Elem, NewEOpts),
-				lists:keyreplace(EName, 3, Acc, NewElem)
-			end
-		end, Elems, Instrs).
-
-augment_([{K,_,_,_} = H|T], Opts) ->
-    refine_(T, lists:keystore(K, 1, Opts, H));
-augment_([], Opts) ->
-    Opts.
-
 
 %%
 %% @doc
