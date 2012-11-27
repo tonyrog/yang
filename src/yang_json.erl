@@ -79,6 +79,7 @@ to_json_type(X, {type,_,<<"enumeration">>, En} = T) ->
     end;
 to_json_type(X, {type, _, <<"union">>, Ts} = Type) ->
     to_json_type_union(Ts, X, Type);
+to_json_type(_, {type, _, <<"empty">>, _}) -> <<>>;
 to_json_type(X, _) ->
     X.
 
@@ -179,6 +180,16 @@ macro_forms(_RPCs, _M) ->
 record_defs(_RPCs, _M) ->
     [].
 
+remove_yang_info([{K, [], _}|T]) ->
+    [{K, []} | remove_yang_info(T)];
+remove_yang_info([{K, [H1|_] = Ch, _}|T]) when is_tuple(H1) ->
+    [{K, remove_yang_info(Ch)} | remove_yang_info(T)];
+remove_yang_info([{K, V, _}|T]) ->
+    [{K, V} | remove_yang_info(T)];
+remove_yang_info([{_,_} = H|T]) ->
+    [H | remove_yang_info(T)];
+remove_yang_info([]) ->
+    [].
 
 validate_request({call, Method, {struct, Request}}, [{module,_,M,Elems}]) ->
     ShortMethod = case re:split(Method, ":", [{return, binary}]) of
@@ -193,15 +204,8 @@ validate_request({call, Method, {struct, Request}}, [{module,_,M,Elems}]) ->
 	error ->
 	    {error, {unknown_method, Method}};
 	{rpc, _, _ActualMethod, Data} ->
-	    try begin
-		    {input,_,_,InputElems} = lists:keyfind(input, 1, Data),
-		    {ValidReq, Meta} = validate_rpc_request(InputElems, Request),
-		    {ok, ValidReq, Meta}
-		end
-	    catch
-		throw:Error ->
-		    {error, Error}
-	    end
+	    {input,_,_,InputElems} = lists:keyfind(input, 1, Data),
+	    validate_rpc_request(InputElems, Request)
     end.
 
 find_rpc([{rpc, _, Meth, _} = RPC|_], Meth) ->
@@ -212,7 +216,14 @@ find_rpc([], _) ->
     error.
 
 validate_rpc_request(Req, Data) ->
-    validate_rpc_request(Req, Data, [], []).
+    try begin
+	    {ValidReq, Meta} = validate_rpc_request(Req, Data, [], []),
+	    {ok, ValidReq, Meta}
+	end
+    catch
+	throw:Error ->
+	    {error, Error}
+    end.
 
 validate_rpc_request([{Leaf,_,Key,Info}|Elems], Data, Acc, Meta)
   when Leaf == leaf; Leaf == anyxml ->
@@ -221,19 +232,19 @@ validate_rpc_request([{Leaf,_,Key,Info}|Elems], Data, Acc, Meta)
 	    Value1 = convert_elem(Leaf, Key, Value, Info),
 	    validate_rpc_request(
 	      Elems, Data1,
-	      [{binary_to_atom(Key, latin1), Value1, Info}|Acc], Meta);
+	      [{to_atom(Key), Value1, Info}|Acc], Meta);
 	false ->
-	    validate_rpc_request_missing(Leaf, Elems, Key, Info, Data)
+	    validate_rpc_request_missing(Leaf, Elems, Key, Info, Data, Acc, Meta)
     end;
 validate_rpc_request([{Stmt, _, Key, Info}|Elems], Data, Acc, Meta)
   when Stmt==list; Stmt=='leaf-list' ->
     case keytake(Key, Data) of
+	false ->
+	    validate_rpc_request_missing(Stmt, Elems, Key, Info, Data, Acc, Meta);
 	{Found, Data1} ->
 	    validate_rpc_request(
 	      Elems, Data1,
-	      [validate_rpc_elem(Stmt, Found, Info)|Acc], Meta);
-	false ->
-	    validate_rpc_request_missing(Stmt, Elems, Key, Info, Data)
+	      [validate_rpc_elem(Stmt, Found, Info)|Acc], Meta)
     end;
 validate_rpc_request([Other|Elems], Data, Acc, Meta) ->
     validate_rpc_request(Elems, Data, Acc, [Other|Meta]);
@@ -244,19 +255,19 @@ validate_rpc_request([], [_|_] = Unknown, _, _) ->
 
 validate_rpc_elem(list, {Key, {array, ListElems}}, Info) ->
     case lists:map(fun({struct, StructElems}) ->
-			   validate_rpc_request(Info, StructElems)
+			   validate_rpc_request(Info, StructElems, [], [])
 		   end, ListElems) of
 	[] ->
 	    check_min_elements([], Key, Info),
 	    %% Meta = [I || I <- Info,
 	    %% 		 not lists:member(element(1,I),
 	    %% 				  [leaf, anyxml, list, 'leaf-list'])],
-	    {binary_to_atom(Key, latin1), [], Info};
+	    {to_atom(Key), [], Info};
 	[_|_] = List ->
 	    Len = length(List),
 	    check_min_elements_(Len, Key, lists:keyfind('min-elements',1,Info)),
 	    check_max_elements_(Len, Key, lists:keyfind('max-elements',1,Info)),
-	    {binary_to_atom(Key, latin1), [[{X,V} || {X,V,_} <- L]
+	    {to_atom(Key), [[{X,V} || {X,V,_} <- L]
 					   || {L,_} <- List], Info}
     end;
 validate_rpc_elem('leaf-list', {Key, {array, ListElems}}, Info) ->
@@ -265,7 +276,7 @@ validate_rpc_elem('leaf-list', {Key, {array, ListElems}}, Info) ->
     Length = length(List),
     check_min_elements_(Length, Key, lists:keyfind('min-elements',1,Info)),
     check_max_elements_(Length, Key, lists:keyfind('max-elements',1,Info)),
-    {binary_to_atom(Key, latin1), List, Info};
+    {to_atom(Key), List, Info};
 validate_rpc_elem(Stmt, {Key, Other}, _Info)
   when Stmt==list; Stmt=='leaf-list' ->
     throw({invalid_params, {mismatch, [Key, Other, array]}}).
@@ -279,6 +290,8 @@ check_max_elements(List, Key, Info) ->
 	    ok
     end.
 
+check_max_elements_(_, _Key, {'max-elements',_,<<"unbounded">>,_}) ->
+    ok;
 check_max_elements_(Length, Key, {'max-elements',_,Max,_}) ->
     case list_to_integer(binary_to_list(Max)) of
 	N when N < Length ->
@@ -308,17 +321,17 @@ check_min_elements_(Length, Key, {'min-elements',_,Max,_}) ->
 check_min_elements_(_, _, false) ->
     ok.
 
-validate_rpc_request_missing(Stmt, Elems, Key, Info, Data)
+validate_rpc_request_missing(Stmt, Elems, Key, Info, Data, Acc, Meta)
   when Stmt==list; Stmt=='leaf-list' ->
     case lists:keyfind('min-elements', 1, Info) of
 	{_, _, <<"0">>, _} ->
-	    validate_rpc_request(Elems, Data);
+	    validate_rpc_request(Elems, Data, Acc, Meta);
 	false ->
-	    validate_rpc_request(Elems, Data);
+	    validate_rpc_request(Elems, Data, Acc, Meta);
 	_ ->
 	    throw({invalid_params, {required, [Key|also_missing(Elems, Data)]}})
     end;
-validate_rpc_request_missing(Stmt, Elems, Key, Info, Data) ->
+validate_rpc_request_missing(Stmt, Elems, Key, Info, Data, Acc, Meta) ->
     case lists:keyfind(mandatory,1,Info) of
 	{mandatory,true} ->
 	    %% Mandatory leafs MUST NOT have a default statement
@@ -328,24 +341,23 @@ validate_rpc_request_missing(Stmt, Elems, Key, Info, Data) ->
 	_ when Stmt==leaf ->
 	    case lists:keyfind(default, 1, Info) of
 		{_, Def} ->
-		    [{binary_to_atom(Key, latin1), Def, Info}|
-		     validate_rpc_request(Elems, Data)];
+		     validate_rpc_request(
+		       Elems, Data,
+		       [{to_atom(Key), Def, Info}|Acc], Meta);
 		false ->
-		    validate_rpc_request(Elems, Data)
+		    validate_rpc_request(Elems, Data, Acc, Meta)
 	    end;
 	_ ->
 	    %% FIXME: check whether this is in fact the right action for all
 	    %% non-leaf statements
-	    validate_rpc_request(Elems, Data)
+	    validate_rpc_request(Elems, Data, Acc, Meta)
     end.
 
+also_missing(Elems, Env, Data) ->
+    also_missing(Elems, Data ++ Env).
+
 also_missing([{Stmt,_,Key,I}|T], Data) ->
-    Mandatory = if Stmt == leaf; Stmt == anyxml ->
-			req_mandatory_elem(I);
-		   Stmt == list; Stmt == 'leaf-list' ->
-			req_non_zero_list(I)
-		end,
-    case (Mandatory andalso not_in_data(Key, Data)) of
+    case (req_mandatory(Stmt, I) andalso not_in_data(Key, Data)) of
 	true ->
 	    [Key|also_missing(T, Data)];
 	false ->
@@ -353,6 +365,11 @@ also_missing([{Stmt,_,Key,I}|T], Data) ->
     end;
 also_missing([], _) ->
     [].
+
+req_mandatory(Stmt, I) when Stmt==leaf; Stmt==anyxml ->
+    req_mandatory_elem(I);
+req_mandatory(Stmt, I) when Stmt==list; Stmt=='leaf-list' ->
+    req_non_zero_list(I).
 
 req_mandatory_elem(I) ->
     case lists:keyfind(mandatory, 1, I) of
@@ -393,17 +410,23 @@ convert_elem(leaf, Key, Value, Type, _Info) ->
 	    throw({invalid_params, {wrong_type, [Key, Value, Type]}})
     end.
 
-keytake(A, L) ->
-    keytake(A, L, []).
+keytake(K, Data) ->
+    case keyfind(K, Data) of
+	false ->
+	    false;
+	Found ->
+	    {Found, Data -- [Found]}
+    end.
 
-keytake(A, [{K,_} = H|T], Acc) ->
+keyfind(A, [H|T]) when is_tuple(H) ->
+    K = element(1, H),
     case comp(A,K) of
 	true ->
-	    {H, lists:reverse(Acc) ++ T};
+	    H;
 	false ->
-	    keytake(A, T, [H|Acc])
+	    keyfind(A, T)
     end;
-keytake(_, [], _) ->
+keyfind(_, []) ->
     false.
 
 comp(A, A) -> true;
@@ -413,6 +436,88 @@ comp(A, B) when is_binary(A), is_atom(B) ->
     A == atom_to_binary(B, latin1);
 comp(_, _) ->
     false.
+
+%% ===================================================================
+%% rpc_to_json(Yang, Attrs, Reply) -> JSONTerm
+%% ===================================================================
+data_to_json([{Stmt, _, Key, Info} = Elem|T], Env, Data)
+  when Stmt==leaf; Stmt==anyxml; Stmt==list; Stmt=='leaf-list' ->
+    case keyfind(Key, Data) of
+	false ->
+	    case keyfind(Key, Env) of
+		Found when is_tuple(Found) ->
+		    [data_to_json_(Elem, Env, element(2, Found))
+		     | data_to_json(T, Env, Data)];
+		false ->
+		    case req_mandatory(Stmt, Info) of
+			true ->
+			    error({invalid_params,
+				   {required, [Key|
+					       also_missing(T, Env, Data)]}});
+			false ->
+			    data_to_json_default(Elem)
+				++ data_to_json(T, Env, Data)
+		    end
+	    end;
+	Found when is_tuple(Found) ->
+	    [data_to_json_(Elem, Env, element(2, Found))
+	     | data_to_json(T, Env, Data)]
+    end;
+data_to_json({Stmt, _, Key, _} = Elem, Env, {Key1, Data})
+  when Stmt==leaf; Stmt==anyxml; Stmt==list; Stmt=='leaf-list' ->
+    case comp(Key, Key1) of
+	true ->
+	    data_to_json_(Elem, Env, Data);
+	false ->
+	    error({invalid_params, {required, [Key]}})
+    end;
+data_to_json([_|T], Env, Data) ->
+    data_to_json(T, Env, Data);
+data_to_json([], _, _) ->
+    [].
+
+data_to_json_default({Stmt,_,Key,Info}) when Stmt==leaf; Stmt==anyxml ->
+    case lists:keyfind(default, 1, Info) of
+	{_, _, Default, _} ->
+	    [{Key, to_json_type(Default, get_type(Info))}];
+	false ->
+	    []
+    end;
+data_to_json_default({Stmt,_,Key,_}) when Stmt==list; Stmt=='leaf-list' ->
+    [{Key, {array, []}}].
+
+data_to_json_({Stmt, _, Key, Info}, _Env, Data)
+  when Stmt==leaf; Stmt==anyxml ->
+    {Key, to_json_type(Data, get_type(Info))};
+data_to_json_({Stmt, _, Key, Info}, Env, Data)
+  when Stmt==list; Stmt=='leaf-list' ->
+    Data1 = case Data of
+		{array, D} when is_list(D) -> D;
+		D when is_list(D) -> D;
+		_ ->
+		    error({invalid_params, {type_error, [Key, Stmt, Data]}})
+	    end,
+    if Stmt=='leaf-list' ->
+	    Type = get_type(Info),
+	    {Key, {array, [to_json_type(X, Type) || X <- Data1]}};
+       Stmt==list ->
+	    {Key, {array,
+		   lists:map(
+		     fun({struct,Elems}) ->
+			     {struct, data_to_json(Info, Env, Elems)};
+			(L) when is_list(L) ->
+			     {struct, data_to_json(Info, Env, L)};
+			(Other) ->
+			     error({invalid_params,
+				    [{type_error,[Key,Info,Other]}]})
+		     end, Data1)}}
+    end.
+
+get_type(Info) ->
+    {type,_,_,_} = lists:keyfind(type, 1, Info).
+
+%% ===================================================================
+
 
 to_json_rpc(Data, Arg, M) ->
     Imports = imports(Data, Arg),
@@ -834,6 +939,14 @@ val2txt(I) ->
 i(I) ->
     lists:duplicate(I,$\s).
 
+to_atom(L) when is_list(L) ->
+    list_to_atom(L);
+to_atom(B) when is_binary(B) ->
+    binary_to_atom(B, latin1);
+to_atom(A) when is_atom(A) ->
+    A.
+
+
 
 %% ===================================================================
 %% EUnit Test Code
@@ -861,7 +974,6 @@ simplest_rpc_test(Y) ->
 	  {call, <<"y0:t0">>,
 	   {struct, [{<<"a">>,17}]}}, Y).
 
-
 simplest_rpc_test1(Y) ->
     {ok, [{l,[],[{leaf,_,<<"x">>,[{type,_,<<"uint32">>,_}]}]}], []} =
 	yang_json:validate_request(
@@ -869,10 +981,6 @@ simplest_rpc_test1(Y) ->
 	   {struct, [{<<"l">>,{array, []}}]}}, Y).
 
 valid_rpc_test(Y) ->
-    %% try begin
-    %% 	    dbg:tracer(),
-    %% 	    dbg:tpl(?MODULE,validate_rpc_request,x),
-    %% 	    dbg:p(all,[c]),
     {ok, [
 	  {a, 17, [{{<<"y">>,<<"foo">>},_,<<"in_a">>,_},
 		   {type,_,<<"uint32">>,[]},
@@ -896,11 +1004,6 @@ valid_rpc_test(Y) ->
 				    ]}}
 		   ]}
 	  }, Y).
-	%% end
-	%% after
-	%%     dbg:ctpl(?MODULE),
-	%%     dbg:stop()
-	%% end.
 
 missing_list_test(Y) ->
     {error, {invalid_params, {required, [<<"b">>]} } } =
