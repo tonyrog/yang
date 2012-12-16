@@ -340,10 +340,11 @@ validate_rpc_request_missing(Stmt, Elems, Key, Info, Data, Acc, Meta) ->
 	    throw({invalid_params, {required, [Key|AlsoMissing]}});
 	_ when Stmt==leaf ->
 	    case lists:keyfind(default, 1, Info) of
-		{_, Def} ->
+		{default, _, Def, _} ->
+		    Value = convert_elem(Stmt, Key, Def, Info),
 		     validate_rpc_request(
 		       Elems, Data,
-		       [{to_atom(Key), Def, Info}|Acc], Meta);
+		       [{to_atom(Key), Value, Info}|Acc], Meta);
 		false ->
 		    validate_rpc_request(Elems, Data, Acc, Meta)
 	    end;
