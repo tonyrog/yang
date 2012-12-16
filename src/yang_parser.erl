@@ -48,6 +48,7 @@
 
 -record(mod, {prefix,
 	      module,
+	      loop_count = 0,
 	      typedefs = [],
 	      imports = orddict:new(),
 	      data = []}).
@@ -239,27 +240,33 @@ include_submodule(M, IOpts, Opts, Ps) ->
 %% expand_uses([], _, _, _, _) ->
 %%     [].
 
-expand_elems_([{uses,L,U,Ou}|T], #mod{data = Yang,
+expand_elems_([{uses,L,U,Ou}|T], #mod{loop_count = Cnt,
+				      data = Yang,
 				      prefix = OwnPfx,
 				      imports = Imports} = ModR, Ps) ->
-    Found =
+    if Cnt > 1000 -> throw({circular_dependency, [uses, L, U]});
+       true -> ok
+    end,
+    {Found, InModR} =
 	case binary:split(U, <<":">>) of
 	    [UName] ->
 		%% FIXME! If no prefix, we should really try to find the
 		%% 'closest' match - which seems like a vague concept.
 		%% Let's assume that there will be only one match.
-		find_grouping(UName, <<>>, Yang, L, Ps);
+		{find_grouping(UName, <<>>, Yang, L, Ps), ModR};
 	    [OwnPfx, UName] ->
-		find_grouping(UName, OwnPfx, Yang, L, Ps);
+		{find_grouping(UName, OwnPfx, Yang, L, Ps), ModR};
 	    [Pfx, UName] ->
 		case orddict:find(Pfx, Imports) of
-		    {ok, #mod{data = Yi}} ->
-			find_grouping(UName, Pfx, Yi, L, []);
+		    {ok, #mod{data = Yi} = OtherModR} ->
+			{find_grouping(UName, Pfx, Yi, L, []), OtherModR};
 		    error ->
 			throw({unknown_prefix, [uses, L, U]})
 		end
 	end,
-    refine(Found, Ou) ++ expand_elems_(T, ModR, Ps);
+    FoundExp = expand_elems_(Found, InModR#mod{loop_count = Cnt+1}, Ps),
+    refine(augment(FoundExp, Ou), Ou) ++
+	expand_elems_(T, ModR#mod{loop_count = 0}, Ps);
 expand_elems_([{type,L,Type,[]} = Elem|T], ModR, Ps) ->
     case builtin_type(Type) of
 	true ->
@@ -273,14 +280,21 @@ expand_elems_([{type,L,Type,[]} = Elem|T], ModR, Ps) ->
     end;
 expand_elems_([{{<<"$yang">>,_}, _, _, _} = IntStmt |T], ModR, Ps) ->
     [IntStmt | expand_elems_(T, ModR, Ps)];
-expand_elems_([{{Pfx,Extension}, L, Arg, Data}|T], ModR, Ps) ->
-    case find_prefix(Pfx, ModR) of
-	false ->
-	    throw({unknown_prefix, [extension, L, Pfx, Extension]});
-	#mod{module = Mp} ->
-	    [{{Mp,Extension},L,Arg, expand_elems_(Data, ModR, Ps)}
-	     | expand_elems_(T, ModR, Ps)]
-    end;
+expand_elems_([{{Pfx,Extension}, L, Arg, Data}|T],
+	      #mod{module = Mod} = ModR, Ps) ->
+    Mp = case find_prefix(Pfx, ModR) of
+	     false ->
+		 if Pfx == Mod ->
+			 %% Most likely, prefix has been expanded already.
+			 %% We have to guess, although we really should know.
+			 Mod;
+		    true ->
+			 throw({unknown_prefix, [extension, L, Pfx, Extension]})
+		 end;
+	     #mod{module = Mod1} -> Mod1
+	 end,
+    [{{Mp,Extension},L,Arg, expand_elems_(Data, ModR, Ps)}
+     | expand_elems_(T, ModR, Ps)];
 %% expand_elems_([{{ext,_,_},_,_,_} = Ext|T], ModR) ->
 %%     %% already expanded
 %%     [Ext| expand_elems_(T, ModR)];
@@ -410,20 +424,13 @@ refine_([{K,_,_,_} = H|T], Opts) ->
 refine_([], Opts) ->
     Opts.
 
-%% augment(Elems, Opts) ->
-%%     Instrs = [{E, Items} || {augment,_,E,Items} <- Opts],
-%%     lists:foldl(fun({EName, Items}, Acc) ->
-%% 			case lists:keymember(EName, 3, Acc) of
-%% 			    true ->
-%% 				throw({augment_error, EName});
-%% 			    false ->
-%% 				Elem = lists:keyfind(EName, 3, Acc),
-%% 				EOpts = element(4, Elem),
-%% 				NewEOpts = augment_(Items, EOpts),
-%% 				NewElem = setelement(4, Elem, NewEOpts),
-%% 				lists:keyreplace(EName, 3, Acc, NewElem)
-%% 			end
-%% 		end, Elems, Instrs).
+augment(Elems, Opts) ->
+    Instrs = [{E, Items} || {augment,_,E,Items} <- Opts],
+    %% We should probably do some validation here
+    lists:foldl(
+      fun({_E, Items}, Acc) ->
+	      Acc ++ Items
+      end, Elems, Instrs).
 
 %% augment_([{K,_,_,_} = H|T], Opts) ->
 %%     refine_(T, lists:keystore(K, 1, Opts, H));
