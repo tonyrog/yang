@@ -164,7 +164,7 @@ to_list(L) when is_list(L) ->
     L.
 
 get_value(I) ->
-    {value, V} = lists:keyfind(value, 1, I),
+    {value, _, V, _} = lists:keyfind(value, 1, I),
     V.
 
 is_empty(<<>>) -> true;
