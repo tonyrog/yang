@@ -89,7 +89,7 @@ check_type(X, <<"array">>  ) -> {true, X};
 check_type(X, undefined) -> {true, X};
 check_type(X, anyxml) when is_list(X); is_binary(X) -> {true, X};
 check_type(X, {type,_,<<"enumeration">>,En}) ->
-    case [E || {E,V} <- [{E1,get_value(I)} || {enum,_,E1,I} <- En],
+    case [E || {E,V} <- [{E1,get_en_value(I)} || {enum,_,E1,I} <- En],
 	       V == X] of
 	[] -> false;
 	[Val] ->
@@ -163,9 +163,9 @@ to_list(B) when is_binary(B) ->
 to_list(L) when is_list(L) ->
     L.
 
-get_value(I) ->
+get_en_value(I) ->
     {value, _, V, _} = lists:keyfind(value, 1, I),
-    V.
+    binary_to_list(V).
 
 is_empty(<<>>) -> true;
 is_empty([])   -> true;
