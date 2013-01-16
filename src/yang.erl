@@ -170,7 +170,7 @@ check_uint_type(N, T) when is_integer(N) ->
     end.
 
 find_enum([{enum, _, Key, I}|T], X) ->
-    V = get_value(I),
+    V = get_en_value(I),
     if X == V ->
 	    [{Key, V}];
        X == Key ->
@@ -189,7 +189,7 @@ to_list(B) when is_binary(B) ->
 to_list(L) when is_list(L) ->
     L.
 
-get_value(I) ->
+get_en_value(I) ->
     {value, _, V, _} = lists:keyfind(value, 1, I),
     V.
 
