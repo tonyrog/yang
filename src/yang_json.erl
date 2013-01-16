@@ -1022,6 +1022,76 @@ testdata(File, Fn) ->
 		File, [{open_hook, yang:bin_hook([{File, Fn}])}]),
     Y.
 
+enum_test() ->
+    File = "e1.yang",
+    {ok, [{module,_,<<"e1">>, Y}]} =
+	yang_parser:deep_parse(
+	  File,
+	  [{open_hook, yang:bin_hook([{File, fun e1/0}])}]),
+    [{leaf,_,<<"l">>,I}] = [E || {leaf,_,<<"l">>,_} = E <- Y],
+    Type = lists:keyfind(type, 1, I),
+    {true, <<"zero">>} = yang:check_type(<<"0">>, Type),
+    {true, <<"zero">>} = yang:check_type(0, Type),
+    {true, <<"zero">>} = yang:check_type("0", Type),
+    {true, <<"then">>} = yang:check_type(<<"3">>, Type),
+    {true, <<"then">>} = yang:check_type(<<"then">>, Type),
+    {true, <<"3">>} = yang:check_type(<<"4">>, Type),
+    ok.
+
+enum_type_test() ->
+    Type = {type,186,<<"enumeration">>,
+	    [{{<<"$yang">>,<<"origtype">>},186,<<"exo:status-code">>,[]},
+	     {enum,41,<<"accepted">>,
+	      [{description,42,
+		<<"Operation has been accepted and is in progress.">>,[]},
+	       {value,43,<<"0">>,[]}]},
+	     {enum,46,<<"complete">>,
+	      [{description,47,
+		<<"The operation has completed successfully.">>,[]},
+	       {value,48,<<"1">>,[]}]},
+	     {enum,51,<<"time-out">>,
+	      [{description,52,<<"Operation has timed out.">>,[]},
+	       {value,53,<<"2">>,[]}]},
+	     {enum,56,<<"device-connected">>,
+	      [{description,57,
+		<<"A connection has been established...">>,[]},
+	       {value,60,<<"3">>,[]}]},
+	     {enum,63,<<"device-unknown">>,
+	      [{description,64,
+		<<"The device-id provided with the operation is...">>,[]},
+	       {value,66,<<"4">>,[]}]},
+	     {enum,70,<<"device-error">>,
+	      [{description,71,
+		<<"The device encountered an error when ...">>,[]},
+	       {value,74,<<"5">>,[]}]},
+	     {enum,77,<<"format-error">>,
+	      [{description,78,<<"The RPC had an incorrect element ...">>,
+		[]},
+	       {value,79,<<"6">>,[]}]},
+	     {enum,82,<<"value-error">>,
+	      [{description,83,<<"The RPC had illegal values in ...">>,[]},
+	       {value,85,<<"7">>,[]}]}]},
+    {true, <<"value-error">>} = yang:check_type(7, Type),
+    {true, <<"value-error">>} = yang:check_type("7", Type),
+    {true, <<"value-error">>} = yang:check_type(<<"7">>, Type),
+    ok.
+
+e1() ->
+    <<
+"module e1 {
+  namespace \"http://feuerlabs.com/test\";
+  prefix e1;
+
+  leaf l {
+    type enumeration {
+      enum zero;
+      enum one;
+      enum then { value 3; }
+      enum 3;
+    }
+  }
+}"
+>>.
 
 y0() ->
     <<

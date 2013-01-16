@@ -88,12 +88,23 @@ check_type(X, <<"object">> ) -> {true, X};
 check_type(X, <<"array">>  ) -> {true, X};
 check_type(X, undefined) -> {true, X};
 check_type(X, anyxml) when is_list(X); is_binary(X) -> {true, X};
-check_type(X, {type,_,<<"enumeration">>,En}) ->
-    case [E || {E,V} <- [{E1,get_value(I)} || {enum,_,E1,I} <- En],
-	       V == X] of
-	[] -> false;
-	[Val] ->
-	    {true, Val}
+check_type(X0, {type,_,<<"enumeration">>,En}) ->
+    try
+	X = if is_integer(X0) -> list_to_binary(integer_to_list(X0));
+	       is_binary(X0) -> X0;
+	       is_list(X0) -> list_to_binary(X0)
+	    end,
+	case find_enum(En, X) of
+	    [] -> false;
+	    [{Key, _}] ->
+		{true, Key};
+	    [{K1, V1}, {K2, V2}] ->
+		%% Either V1 or V2 must be equal to X, or it's an error
+		if V1 == X -> {true, K1};
+		   V2 == X -> {true, K2}
+		end
+	end
+    catch error:_ -> false
     end;
 check_type(X, {type,_,<<"binary">>,_}) when is_binary(X) -> {true, X};
 check_type(X, {type,_,<<"bits">>,_}) when is_bitstring(X) -> {true, X};
@@ -157,6 +168,21 @@ check_uint_type(N, T) when is_integer(N) ->
        T == <<"uint64">>, 0 =< N, N =< 18446744073709551615 -> {true, N};
        true -> false
     end.
+
+find_enum([{enum, _, Key, I}|T], X) ->
+    V = get_value(I),
+    if X == V ->
+	    [{Key, V}];
+       X == Key ->
+	    [{Key, V}|find_enum(T, X)];
+       true ->
+	    find_enum(T, X)
+    end;
+find_enum([_|T], X) ->
+    find_enum(T, X);
+find_enum([], _) ->
+    [].
+
 
 to_list(B) when is_binary(B) ->
     binary_to_list(B);
