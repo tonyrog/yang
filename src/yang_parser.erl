@@ -167,17 +167,19 @@ import_(M, IOpts, Opts, L, Ps, Dict) ->
     ?dbg("m ~p",[M]),
     {Yi, Types} = parse_expand(<<M/binary, ".yang">>, L, Opts, Ps),
     Prefix = case lists:keyfind(prefix,1,IOpts) of
-		 {prefix,_,Pfx,_} -> 
+		 {prefix,_,Pfx,_} ->
 		     Pfx;
 		 false ->
 		     %% The prefix substatement is mandatory in modules
 		     {_, _, Pfx, _} = lists:keyfind(prefix,1,Yi),
 		     Pfx
 	     end,
-    orddict:store(Prefix, #mod{module = M,
-			       prefix = Prefix,
-			       data = Yi,
-			       typedefs = Types}, Dict).
+    orddict:store(
+      {prefix,M}, Prefix,
+      orddict:store(Prefix, #mod{module = M,
+				 prefix = Prefix,
+				 data = Yi,
+				 typedefs = Types}, Dict)).
 
 
 parse_expand(F, L, Opts, Ps) ->
@@ -249,11 +251,11 @@ include_submodule(M, IOpts, Opts, Ps) ->
 %% expand_uses([], _, _, _, _) ->
 %%     [].
 
-expand_elems_([{uses,L,U,Ou} = Elem|T], #mod{loop_count = Cnt,
+expand_elems_([{uses,L,U,Ou} = _Elem|T], #mod{loop_count = Cnt,
 					     data = Yang,
 					     prefix = OwnPfx,
 					     imports = Imports} = ModR, Ps) ->
-    %%?dbg("Elem ~p,~nMod ~p", [Elem, ModR]),
+    %%?dbg("Elem ~p,~nMod ~p", [_Elem, ModR]),
     if Cnt > 1000 -> throw({circular_dependency, [uses, L, U]});
        true -> ok
     end,
@@ -293,7 +295,7 @@ expand_elems_([{type,L,Type,I} = Elem|T], ModR, Ps) ->
     end;
 expand_elems_([{{<<"$yang">>,_}, _, _, _} = IntStmt |T], ModR, Ps) ->
     [IntStmt | expand_elems_(T, ModR, Ps)];
-expand_elems_([{{Pfx,Extension}, L, Arg, Data} = Elem|T],
+expand_elems_([{{Pfx,Extension}, L, Arg, Data} = _Elem|T],
 	      #mod{module = Mod} = ModR, Ps) ->
     %% ?dbg("Elem ~p,~nMod ~p", [Elem, Mod]),
     Mp = case find_prefix(Pfx, ModR) of
@@ -303,18 +305,18 @@ expand_elems_([{{Pfx,Extension}, L, Arg, Data} = Elem|T],
 			 %% We have to guess, although we really should know.
 			 Mod;
 		    true ->
-			 ?dbg("Elem ~p,~nMod ~p,~n Ps ~p",  [Elem, ModR, Ps]),
+			 ?dbg("Elem ~p,~nMod ~p,~n Ps ~p",  [_Elem, ModR, Ps]),
 			 throw({unknown_prefix, [extension, L, Pfx, Extension]})
 		 end;
-	     #mod{prefix = Pfx} -> 
-		 Pfx
+	     #mod{module = M} ->
+		 M
 	 end,
     [{{Mp,Extension},L,Arg, expand_elems_(Data, ModR, Ps)}
      | expand_elems_(T, ModR, Ps)];
 %% expand_elems_([{{ext,_,_},_,_,_} = Ext|T], ModR) ->
 %%     %% already expanded
 %%     [Ext| expand_elems_(T, ModR)];
-expand_elems_([{Elem,L,Name,Data} = Stmt|T], ModR, Ps) ->
+expand_elems_([{Elem,L,Name,Data} = _Stmt|T], ModR, Ps) ->
     %%?dbg("Stmt ~p,~nMod ~p", [Stmt, ModR]),
     [{Elem,L,Name,fix_expanded_(expand_elems_(Data, ModR, Ps))}
      | expand_elems_(T, ModR, Ps)];
@@ -326,7 +328,12 @@ find_prefix(Pfx, #mod{prefix = Pfx} = ModR) ->
 find_prefix(Pfx, #mod{imports = Imports}) ->
     case orddict:find(Pfx, Imports) of
 	error ->
-	    false;
+	    case orddict:find({prefix,Pfx}, Imports) of
+		error -> false;
+		{ok, ActualPrefix} ->
+		    %% The "prefix" was in fact a module name (already expanded)
+		    orddict:fetch(ActualPrefix, Imports)
+	    end;
 	{ok, #mod{} = ModI} ->
 	    ModI
     end.
