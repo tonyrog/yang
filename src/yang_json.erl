@@ -64,18 +64,23 @@ to_json_type(X, {type,_,<<"uint", _/binary>>,_}) when is_integer(X), X >= 0 ->
     X;
 to_json_type(false, {type,_,<<"boolean">>,_}) -> false;
 to_json_type(true, {type,_,<<"boolean">>,_}) -> true;
-to_json_type(X, {type,_,<<"enumeration">>, En} = T) ->
-    case [lists:keyfind(value,1,I1) || {enum,_,E1,I1} <- En,
-				       E1 == X] of
-	[{value,_,V,_}] when is_binary(V) ->
-	    %% The enum value is specified as an integer, but represented by
-	    %% yang_parser as a binary.
-	    list_to_integer(binary_to_list(V));
-	[{value,_,V,_}] when is_integer(V) ->
-	    %% Just in case the above should ever change...
-	    V;
-	[] ->
-	    error({type_error, [X, T]})
+to_json_type(X0, {type,_,<<"enumeration">>, En} = T) ->
+    %% We always return the key (binary) - not the value (integer).
+    %% This seems to be in keeping with how NETCONF does it.
+    X = if is_integer(X0) -> list_to_binary(integer_to_list(X0));
+	   is_binary(X0)  -> X0;
+	   is_list(X0) -> list_to_binary(X0)
+	end,
+    case find_enum(En, X) of
+	[] -> error({type_error, [X0, T]});
+	[{Key, _}] ->
+	    Key;
+	[{K1, V1}, {K2, V2}] ->
+	    %% Either V1 or V2 must be equal to X, or it's an error
+	    if V1 == X -> K1;
+	       V2 == X -> K2;
+	       true -> error({type_error, [X0, T]})
+	    end
     end;
 to_json_type(X, {type, _, <<"union">>, Ts} = Type) ->
     to_json_type_union(Ts, X, Type);
@@ -947,6 +952,25 @@ to_atom(B) when is_binary(B) ->
 to_atom(A) when is_atom(A) ->
     A.
 
+%% duplicated from yang.erl
+find_enum([{enum, _, Key, I}|T], X) ->
+    V = get_en_value(I),
+    if X == V ->
+	    [{Key, V}];
+       X == Key ->
+	    [{Key, V}|find_enum(T, X)];
+       true ->
+	    find_enum(T, X)
+    end;
+find_enum([_|T], X) ->
+    find_enum(T, X);
+find_enum([], _) ->
+    [].
+
+get_en_value(I) ->
+    {value, _, V, _} = lists:keyfind(value, 1, I),
+    V.
+
 
 
 %% ===================================================================
@@ -1036,6 +1060,11 @@ enum_test() ->
     {true, <<"then">>} = yang:check_type(<<"3">>, Type),
     {true, <<"then">>} = yang:check_type(<<"then">>, Type),
     {true, <<"3">>} = yang:check_type(<<"4">>, Type),
+    <<"zero">> = yang_json:to_json_type(<<"0">>, Type),
+    <<"zero">> = yang_json:to_json_type(0, Type),
+    <<"zero">> = yang_json:to_json_type("0", Type),
+    <<"zero">> = yang_json:to_json_type(<<"zero">>, Type),
+    <<"zero">> = yang_json:to_json_type("zero", Type),
     ok.
 
 enum_type_test() ->
