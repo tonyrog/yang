@@ -381,7 +381,7 @@ markdown_descriptions(Msg) ->
     case [X || {_,{_,_}} = X <- collect_descriptions(Msg, orddict:new())] of
 	[] -> [];
 	[{K,{D,T}}|Tail] ->
-	    ["**descriptions**\n",
+	    ["#### descriptions\n",
 	     "<dl><dt>", K, "</dt>\n", "<dd>", D,
 	     " (<b>type:</b> ", type_to_text(T), ")", "</dd>",
 	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1,
