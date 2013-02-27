@@ -702,12 +702,12 @@ markdown(File, JSON) ->
     end.
 
 markdown([{module, M, RPCs}|T]) ->
-    ["## Module: ", M, "\n\n", markdown_rpcs(RPCs), "\n\n" | markdown(T)];
+    ["# Module: ", M, "\n\n", markdown_rpcs(RPCs), "\n\n" | markdown(T)];
 markdown([]) ->
     [].
 
 markdown_rpcs([{Not, {notification, Descr, Msg}} | T]) ->
-    ["### Notification: ", Not, "\n\n\n", i(0), pp_json(Msg), "\n\n\n",
+    ["## Notification: ", Not, "\n\n\n", i(0), pp_json(Msg), "\n\n\n",
      case Descr of
 	 "" -> "";
 	 _ ->
@@ -715,15 +715,15 @@ markdown_rpcs([{Not, {notification, Descr, Msg}} | T]) ->
      end,
      markdown_descriptions(Msg), "\n\n" | markdown_rpcs(T)];
 markdown_rpcs([{RPC, {Descr, {request, Req}, {reply, Rep}}} | T]) ->
-    ["## ", RPC, "\n\n",
-     "### Request\n\n\n", i(0), pp_json(Req), "\n\n\n",
+    ["# ", RPC, "\n\n",
+     "## Request\n\n\n", i(0), pp_json(Req), "\n\n\n",
      case Descr of
 	 "" -> "";
 	 _ ->
 	     [Descr, "\n\n"]
      end,
      markdown_descriptions(Req), "\n\n",
-     "### Reply\n\n\n", i(0), pp_json(Rep), "\n\n\n",
+     "## Reply\n\n\n", i(0), pp_json(Rep), "\n\n\n",
      markdown_descriptions(Rep), "\n\n" | markdown_rpcs(T)];
 markdown_rpcs([]) ->
     [].
@@ -732,13 +732,13 @@ markdown_descriptions(Msg) ->
     case [X || {_,{_,_}} = X <- collect_descriptions(Msg, orddict:new())] of
 	[] -> [];
 	[{K,{D,T}}|Tail] ->
-	    ["#### descriptions\n",
-	     "<dl><dt>", K, "</dt>\n", "<dd>", D,
-	     " (<b>type:</b> ", type_to_text(T), ")", "</dd>",
-	     [["\n<dt>", K1, "</dt>\n", "<dd>", D1,
-	       " (<b>type:</b> ", type_to_text(T1), ")", "</dd>"]
+	    ["### Elements\n",
+	     "**", K, "** ", D,
+	     " (**type:** ", type_to_text(T), ")\n\n",
+	     [["**", K1, "** ", D1,
+	       " (**type:** ", type_to_text(T1), ")\n\n"]
 	      || {K1,{D1,T1}} <- Tail],
-	     "\n</dl>\n\n"]
+	     "\n\n"]
     end.
 
 collect_descriptions({struct, L}, Acc) ->
