@@ -489,8 +489,9 @@ data_to_json_default({Stmt,_,Key,Info}) when Stmt==leaf; Stmt==anyxml ->
 data_to_json_default({Stmt,_,Key,_}) when Stmt==list; Stmt=='leaf-list' ->
     [{Key, {array, []}}].
 
-data_to_json_({Stmt, _, Key, Info}, _Env, Data)
-  when Stmt==leaf; Stmt==anyxml ->
+data_to_json_({anyxml, _, Key, _}, _Env, Data) ->
+    {Key, Data};
+data_to_json_({leaf, _, Key, Info}, _Env, Data) ->
     {Key, to_json_type(Data, get_type(Info))};
 data_to_json_({Stmt, _, Key, Info}, Env, Data)
   when Stmt==list; Stmt=='leaf-list' ->
