@@ -27,6 +27,7 @@
 	 deep_parse_file/1,
 	 validate_file/1,
 	 json_rpc/1,
+	 typespec/1, 
 	 check_type/2]).
 -import(lists, [reverse/1]).
 
@@ -34,19 +35,22 @@
 
 
 scan_file(File) ->
-    yang_scan:file(File).
+    yang_scan_nif:file(File).
 
 parse_file(File) ->
     yang_parser:parse(File).
 
 deep_parse_file(File) ->
-    yang_parser:deep_parse_file(File).
+    yang_parser:deep_parse(File).
 
 validate_file(File) ->
     yang_parser:validate(File).
 
 json_rpc(YangFile) ->
     yang_json:json_rpc(YangFile).
+
+typespec(Module) ->
+    yang_typespec:typespec(Module).
 
 -spec check_type(any(), type()) -> {true, any()} | false.
 %% @spec check_type(Value, Type) -> {true, ConvertedValue} | false
