@@ -1,6 +1,6 @@
 -module(yang_json_validate).
 
--export([validate/3, validate/4, validate_type/3, string_to_datetime/1, test/0]).
+-export([validate/3, validate/4, validate_type/3, string_to_datetime/1]).
 
 -include("typespec.hrl").
 
@@ -216,22 +216,3 @@ timezone_offset(_DateTime, _, _, _) -> error.
 
 tz_fix("+", A, B) -> A - B;
 tz_fix("-", A, B) -> A + B.
-
-%%------------------------------
-
-typespec(File) ->
-    {ok, Yang} = yang:deep_parse_file(File),
-    yang:typespec(Yang).
-
-test() ->
-    Skel = typespec("priv/crud-api-skeleton.yang"),
-    UDR = typespec("priv/udr-api.yang"),
-    {ok, Req1, _} = hello_json:decode(<<"{\"message\":\"Server Error\",\"code\":-32099}">>),
-    R1 = validate(Skel, <<"rpc_error">>, Req1),
-    io:format("R1: ~p~n", [R1]),
-    
-    {ok, Req2, _} = hello_json:decode(<<"{\"Private-User-Id\":\"demo@komola\",\"Subscriber-Id\":\"demo@komola\",\"Charging-Account\":\"\",\"Credentials\":[{\"Authentication-Id\":\"demo@komola\",\"Authentication-Scheme\":\"password\",\"Authentication-Data\":\"asdads222\"},{\"Authentication-Id\":\"foo@komola\",\"Authentication-Scheme\":\"password\",\"Authentication-Data\":\"test\"},{\"Authentication-Id\":\"asd@komola\",\"Authentication-Scheme\":\"password\",\"Authentication-Data\":\"foobar\"}],\"Public-User-Ids\":[],\"Overlay-Service-Profiles\":[{\"Service-Profile-Id\":\"runway\",\"Override\":[],\"Append\":[]}]}">>),
-    R2 = validate(UDR, <<"UserObject">>, Req2),
-    io:format("R2: ~p~n", [R2]),
-
-    ok.
