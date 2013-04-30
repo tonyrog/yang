@@ -23,8 +23,7 @@ validate_(#object{fields = Fields}, Depth, {Doc}) when is_list(Doc) ->
     validate_fields(Fields, Depth, Doc);
 validate_(#object{fields = Fields}, Depth, Doc) when is_list(Doc) ->
     validate_fields(Fields, Depth, Doc);
-validate_(Type, _, Doc) ->
-    error_logger:error_report([{type, Type}, {doc, Doc}]),
+validate_(_Type, _, _Doc) ->
     throw({error, not_impleted_yet}).
 
 %% stop here
@@ -40,14 +39,17 @@ validate_fields([], _, Doc, NDoc) ->
     throw({error, too_much_fields, Doc});
 validate_fields([Type|Tail], Depth, Doc, NDoc) ->
     N = element(2, Type),
-    {Field, Doc1} =
-	case lists:keytake(N, 1, Doc) of
-	    {value, F, D} -> {F, D};
-	    _             -> {false, Doc}
-	end,
+    {Field, Doc1} = case lists:keytake(N, 1, Doc) of
+        {value, F, D} ->
+            {F, D};
+        _ ->
+            {false, Doc}
+    end,
     case validate_item(N, Field, Depth, Type) of
-	undefined -> validate_fields(Tail, Depth, Doc1, NDoc);
-	NewField  -> validate_fields(Tail, Depth, Doc1, [NewField|NDoc])
+        undefined ->
+            validate_fields(Tail, Depth, Doc1, NDoc);
+        NewField  ->
+            validate_fields(Tail, Depth, Doc1, [NewField|NDoc])
     end.
 
 %% validate_fields(Fields, Depth, Doc) ->
@@ -70,7 +72,7 @@ validate_item(_, false, _, #field{mandatory = false, name = N, default = Default
     {N, Default};
 validate_item(_, false, _, #array{mandatory = false}) ->
     undefined;
-validate_item(N, false, _, _) ->
+validate_item(N, false, _, Type) when element(1, Type) =/= <<"boolean">> ->
     throw({error, missing_field, N});
 
 %%------------------------------
@@ -143,15 +145,17 @@ validate_item(_, {V}, _, {<<"object">>, _})
 validate_item(N, V, _, Type = {<<"timestamp">>, _})
   when is_list(V); is_binary(V) ->
     case string_to_datetime(V) of
-	{ok, _} -> V;
-	error   -> invalid_item(N, V, Type)
+        {ok, _} ->
+            V;
+        error ->
+            invalid_item(N, V, Type)
     end;
 
 validate_item(N, V, _, Type) ->
     invalid_item(N, V, Type).
 
 invalid_item(N, V, Type) ->
-    error_logger:info_report([{function, validate_item},
+    error_logger:error_report([{function, validate_item},
 			      {field, N}, {value, V}, {type, Type}]),
     throw({error, invalid_type, {{N, V}, Type}}).
 

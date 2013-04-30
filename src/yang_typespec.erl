@@ -153,6 +153,9 @@ element({choice,_,Name,Opts}) ->
     R = ?O2R(#choice{name = Name}, choice, Opts),
     {Fields, NOpts} = element_mapfold(fun cases/1, R#choice.opts),
     R#choice{cases = Fields, opts = NOpts};
+element({prefix, _, Name, _}) ->
+    put(prefix, Name),
+    [];
 element(_) ->
     [].
 
@@ -167,11 +170,15 @@ elements(Opts) ->
     element_mapfold(fun element/1, Opts).
 
 element_mapfold(Fun, Opts) ->
-    {RemOpts, Fields} = lists:mapfoldl(fun(Elem, Fields) -> 
-					      case Fun(Elem) of
-						  []    -> {Elem, Fields};
-						  NElem -> {[], [NElem|Fields]}
-					      end end, [], Opts),
+    {RemOpts, Fields} = lists:mapfoldl(
+        fun(Elem, Fields) ->
+                case Fun(Elem) of
+                    []    ->
+                        {Elem, Fields};
+                    NElem ->
+                        {[], [NElem|Fields]}
+                end
+        end, [], Opts),
     {lists:reverse(Fields), lists:flatten(RemOpts)}.
 
 type(<<"enumeration">>, Opts) ->
@@ -192,7 +199,8 @@ object(Name, Opts) ->
     {Fields, NOpts} = elements(G#object.opts),
     G#object{fields = Fields, opts = NOpts}.
 
-rpc(Name,Opts) ->
+rpc(Name0, Opts) ->
+    Name = binary:list_to_bin([get(prefix), $., Name0]),
     R = ?O2R(#rpc{name = Name}, rpc, Opts),
     {Fields, NOpts} = elements(R#rpc.opts),
     R#rpc{fields = Fields, opts = NOpts}.

@@ -305,16 +305,20 @@ refine_list(refine, [], Items, EOpts) ->
     refine_(Items, EOpts);
 refine_list(augment, [], Items, []) ->
     Items;
+refine_list(augment, [], Items, EOpts) ->
+    EOpts ++ Items;
+refine_list(Op, [<<>>|T], Items, EOpts) ->
+    refine_list(Op, T, Items, EOpts);
 refine_list(Op, [EName|T], Items, EOpts) ->
-	case lists:keyfind(EName, 3, EOpts) of
-	    Elem when is_tuple(Elem) ->
-		NextEOpts = element(4, Elem),
-		NewEOpts = refine_list(Op, T, Items, NextEOpts),
-		NewElem = setelement(4, Elem, NewEOpts),
-		lists:keyreplace(EName, 3, EOpts, NewElem);
-	    false ->
-		throw({refine_error, EName})
-	end.
+    case lists:keyfind(EName, 3, EOpts) of
+        Elem when is_tuple(Elem) ->
+            NextEOpts = element(4, Elem),
+            NewEOpts = refine_list(Op, T, Items, NextEOpts),
+            NewElem = setelement(4, Elem, NewEOpts),
+            lists:keyreplace(EName, 3, EOpts, NewElem);
+        false ->
+            throw({refine_error, Op, EName})
+    end.
 
 refine_([{K,_,_,_} = H|T], Opts) ->
     refine_(T, lists:keystore(K, 1, Opts, H));
