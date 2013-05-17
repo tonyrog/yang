@@ -31,28 +31,29 @@
 typespec([{module,_,M,Data}]) ->
     {Fields, NOpts} = element_mapfold(fun yang_typespec/1, Data),
     io:format("unhandeld opts: ~p~n", [NOpts]),
-    {M, Fields}.
+    Prefix = get(prefix),
+    {M, Prefix, Fields}.
 
-rpc_methods({_Module, TypeSpec}) ->
+rpc_methods({_Module, _Namespace, TypeSpec}) ->
     [Name || #rpc{name = Name} <- TypeSpec].
 
-rpc_params(RPC, Ms = {_Module, TypeSpec}) ->
+rpc_params(RPC, {_Module, _Namespace, TypeSpec}=Ms) ->
     case lists:keyfind(RPC, #rpc.name, TypeSpec) of
-	#rpc{input = Input} ->
-	    [element(2, X) || X <- Input#object.fields];
-	_ ->
-	    error({badarg, [rpc_params, RPC, Ms]})
+        #rpc{input = Input} ->
+            [element(2, X) || X <- Input#object.fields];
+        _ ->
+            error({badarg, [rpc_params, RPC, Ms]})
     end.
 
-get_type({_Module, TypeSpec}, Type)
+get_type({_Module, _Prefix, TypeSpec}, Type)
   when is_list(Type) ->
     lists:foldl(fun(_, false) -> false;
 		   (T, Acc)  -> typefind(T, Acc) end,
 		TypeSpec, Type);
-get_type({_Module, TypeSpec}, Type) ->
+get_type({_Module, _Prefix, TypeSpec}, Type) ->
     typefind(Type, TypeSpec).
 
-hrl(Path, Ms = {Module, _}) ->
+hrl(Path, Ms = {Module, _Namespace, _}) ->
     F = << (filename:join(Path, Module))/binary, <<".hrl">>/binary >>,
     file:write_file(F, hrl(Ms)).
 
@@ -62,8 +63,8 @@ hrl(Ms) ->
 pretty_print(ModuleSpec) ->
     io_lib_pretty:print(ModuleSpec, fun record_definition/2).
 
-pretty_print({Module, TypeSpec}, Filter) ->
-    io_lib_pretty:print({Module, Filter(TypeSpec)}, fun record_definition/2).
+pretty_print({Module, Namespace, TypeSpec}, Filter) ->
+    io_lib_pretty:print({Module, Namespace, Filter(TypeSpec)}, fun record_definition/2).
 
 pretty_print_rpc(ModuleSpec) ->
     pretty_print(ModuleSpec, fun(T) -> [X || X = #rpc{} <- T] end).
