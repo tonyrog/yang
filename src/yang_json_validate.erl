@@ -193,7 +193,7 @@ validate_item(N, V, Depth, Type = {<<"union">>, Types}) when is_list(Types) ->
                 try
                     validate_item(N, V, Depth, T)
                 catch
-                    throw:{error, invalid_type, I} ->
+                    throw:{error, invalid_type, _} ->
                         undefined
                 end;
             (_, Param) ->
