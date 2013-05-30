@@ -107,23 +107,50 @@ validate_item(N, V, _, Type = #enumeration{enum = Enum}) ->
 validate_item(_, V, _, #string{})
   when is_binary(V) -> V;
 
-validate_item(_, V, _, {<<"int8">>, _})
-  when is_integer(V), V >= -128, V =< 127 -> V;
-validate_item(_, V, _, {<<"int16">>, _})
-  when is_integer(V), V >= -32768, V =< 32767 -> V;
-validate_item(_, V, _, {<<"int32">>, _})
-  when is_integer(V), V >= -2147483648, V =< 2147483647 -> V;
-validate_item(_, V, _, {<<"int64">>, _})
-  when is_integer(V), V >= -9223372036854775808, V =< 9223372036854775807 -> V;
-
-validate_item(_, V, _, {<<"uint8">>, _})
-  when is_integer(V), V >= 0, V =< 255 -> V;
-validate_item(_, V, _, {<<"uint16">>, _})
-  when is_integer(V), V >= 0, V =< 65535 -> V;
-validate_item(_, V, _, {<<"uint32">>, _})
-  when is_integer(V), V >= 0, V =< 4294967295 -> V;
-validate_item(_, V, _, {<<"uint64">>, _})
-  when is_integer(V), V >= 0, V =< 18446744073709551615 -> V;
+validate_item(N, V, _, Type={IntType, Opts}) when
+        IntType =:= <<"int4">>;
+        IntType =:= <<"int8">>;
+        IntType =:= <<"int16">>;
+        IntType =:= <<"int32">>;
+        IntType =:= <<"int64">>;
+        IntType =:= <<"uint8">>;
+        IntType =:= <<"uint16">>;
+        IntType =:= <<"uint32">>;
+        IntType =:= <<"uint64">> ->
+    Ranges = [
+        {<<"int4">>, [{-64, 63}]},
+        {<<"int8">>, [{-128, 127}]},
+        {<<"int16">>, [{-32768, 32767}]},
+        {<<"int32">>, [{-2147483648, 2147483647}]},
+        {<<"int64">>, [{-9223372036854775808, 9223372036854775807}]},
+        {<<"uint8">>, [{0, 255}]},
+        {<<"uint16">>, [{0, 65535}]},
+        {<<"uint32">>, [{0, 4294967295}]},
+        {<<"uint64">>, [{0, 18446744073709551615}]}
+    ],
+    AdditionalRanges = case lists:keyfind(range, 1, Opts) of
+        false ->
+            [];
+        {range, _, BinRange, _} ->
+            [Start, End] = string:tokens(binary_to_list(BinRange), "."),
+            [{list_to_integer(Start), list_to_integer(End)}]
+    end,
+    {_, CoreRanges} = lists:keyfind(IntType, 1, Ranges),
+    V1 = if
+        is_binary(V) ->
+            list_to_integer(binary_to_list(V));
+        is_list(V) ->
+            list_to_integer(V);
+        true ->
+            V
+    end,
+    Out = [R || {Start, End} = R <- CoreRanges ++ AdditionalRanges, V1 < Start orelse V1 > End],
+    case Out of
+        [] ->
+            V;
+        _ ->
+            invalid_item(N, V, Type)
+    end;
 
 validate_item(_, V, _, {<<"boolean">>, _})
   when is_boolean(V) -> V;
@@ -135,6 +162,14 @@ validate_item(_, V, _, {<<"number">>, _})
   when is_number(V) -> V;
 validate_item(_, V, _, {<<"integer">>, _})
   when is_integer(V) -> V;
+validate_item(N, V, _, Type = {type, _, T, _}) 
+       when T =:= <<"ipv4-address">>; T =:= <<"ipv6-address">> ->
+    case inet_parse:address(binary_to_list(V)) of
+        {ok, _} ->
+            V;
+        _ ->
+            invalid_item(N, V, Type)
+    end;
 
 %%------------------------------
 %% non standard complex types
@@ -149,6 +184,26 @@ validate_item(N, V, _, Type = {<<"timestamp">>, _})
             V;
         error ->
             invalid_item(N, V, Type)
+    end;
+
+validate_item(N, V, Depth, Type = {<<"union">>, Types}) when is_list(Types) ->
+    Ok = lists:foldl(
+        fun
+            (T, undefined) ->
+                try
+                    validate_item(N, V, Depth, T)
+                catch
+                    throw:{error, invalid_type, I} ->
+                        undefined
+                end;
+            (_, Param) ->
+                Param
+        end, undefined, Types),
+    case Ok of
+        undefined ->
+            invalid_item(N, V, Type);
+        _ ->
+            Ok
     end;
 
 validate_item(N, V, _, Type) ->
