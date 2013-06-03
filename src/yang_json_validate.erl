@@ -37,6 +37,15 @@ validate_fields([], _, Doc, NDoc) ->
     error_logger:error_report([{function, validate_fields},
 			       {remaining, Doc}, {done, NDoc}]),
     throw({error, too_much_fields, Doc});
+
+validate_fields([Type=#array{}|Tail], Depth, Doc, NDoc) ->
+    #array{name=N} = Type,
+    case validate_item(N, {N, Doc}, Depth, Type) of
+        undefined ->
+            validate_fields(Tail, Depth, [], NDoc);
+        NewField  ->
+            validate_fields(Tail, Depth, [], NewField ++ NDoc)
+    end;
 validate_fields([Type|Tail], Depth, Doc, NDoc) ->
     N = element(2, Type),
     {Field, Doc1} = case lists:keytake(N, 1, Doc) of
@@ -86,18 +95,22 @@ validate_item(_, {N, V}, Depth, #array{type = Type})
     Fun = fun(Item) ->
             validate_item(N, Item, Depth - 1, Type)
     end,
-    {N, lists:map(Fun, V)};
+    lists:map(Fun, V);
 validate_item(_, {N, {V}}, Depth, #object{fields = Fields})
   when is_list(V) ->
     {N, {validate_fields(Fields, Depth - 1, V)}};
+validate_item(N, {N, V}, Depth, #object{name=N, fields = Fields}) ->
+    {N, validate_fields(Fields, Depth - 1, V)};
 validate_item(_, {V}, Depth, #struct{fields = Fields})
   when is_list(V) ->
     {validate_fields(Fields, Depth, V)};
 
 validate_item(N, V, _, Type = #enumeration{enum = Enum}) ->
     case lists:member(V, Enum) of
-	true -> V;
-	_    -> invalid_item(N, V, Type)
+        true -> 
+            V;
+        _    -> 
+            invalid_item(N, V, Type)
     end;
 
 %%------------------------------
