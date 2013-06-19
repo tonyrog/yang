@@ -167,6 +167,10 @@ validate_item(N, V, _, Type={IntType, Opts}) when
 
 validate_item(_, V, _, {<<"boolean">>, _})
   when is_boolean(V) -> V;
+validate_item(_, <<"true">>, _, {<<"boolean">>, _}) ->
+    true;
+validate_item(_, <<"false">>, _, {<<"boolean">>, _}) ->
+    false;
 
 %%------------------------------
 %% non standard simple types
