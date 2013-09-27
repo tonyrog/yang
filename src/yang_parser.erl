@@ -244,6 +244,7 @@ builtin_type(<<"union"              >>) -> true;
 
 builtin_type(<<"object"             >>) -> true;
 builtin_type(<<"timestamp"          >>) -> true;
+builtin_type(<<"any"                >>) -> true;
 builtin_type(_) -> false.
 
 expand_type(Type, M, L, Typedefs, Imports) ->
