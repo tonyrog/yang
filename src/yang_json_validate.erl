@@ -223,6 +223,9 @@ validate_item(N, V, Depth, Type = {<<"union">>, Types}) when is_list(Types) ->
             Ok
     end;
 
+validate_item(_N, V, _, _Type = {<<"any">>, _}) ->
+    V;
+
 validate_item(N, V, _, Type) ->
     invalid_item(N, V, Type).
 
