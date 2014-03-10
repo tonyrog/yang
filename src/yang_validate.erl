@@ -797,7 +797,7 @@ rule('typedef') ->
 		 ])};
 rule('type') ->
     {'type',identifier_ref,
-     ?ALL(0,none‚,[
+     ?ALL(0,none,[
 		   ?Y(0,1,'fraction-digits'), %% decimal64
 		   ?Y(0,1,'range'),   %% numerical
 		   ?Y(0,1,'length'),
