@@ -50,7 +50,7 @@
 init() ->
     Nif = filename:join(code:priv_dir(yang),"yang_drv"),
     io:format("Loading: ~s\n", [Nif]),
-    erlang:load_nif(Nif, 0).
+    ok = erlang:load_nif(Nif, 0).
 
 new() ->
     erlang:error(nif_not_loaded).
