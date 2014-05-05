@@ -38,14 +38,6 @@ validate_fields([], _, Doc, NDoc) ->
 			       {remaining, Doc}, {done, NDoc}]),
     throw({error, too_much_fields, Doc});
 
-validate_fields([Type=#array{}|Tail], Depth, Doc, NDoc) ->
-    #array{name=N} = Type,
-    case validate_item(N, {N, Doc}, Depth, Type) of
-        undefined ->
-            validate_fields(Tail, Depth, [], NDoc);
-        NewField  ->
-            validate_fields(Tail, Depth, [], NewField ++ NDoc)
-    end;
 validate_fields([Type|Tail], Depth, Doc, NDoc) ->
     N = element(2, Type),
     {Field, Doc1} = case lists:keytake(N, 1, Doc) of
@@ -92,10 +84,8 @@ validate_item(_, {N, V}, Depth, #field{type = Type}) ->
     {N, validate_item(N, V, Depth, Type)};
 validate_item(_, {N, V}, Depth, #array{type = Type})
   when is_list(V) ->
-    Fun = fun(Item) ->
-            validate_item(N, Item, Depth - 1, Type)
-    end,
-    lists:map(Fun, V);
+    {N, [validate_item(N, Item, Depth - 1, Type) || Item <- V]};
+
 validate_item(_, {N, {V}}, Depth, #object{fields = Fields})
   when is_list(V) ->
     {N, {validate_fields(Fields, Depth - 1, V)}};
