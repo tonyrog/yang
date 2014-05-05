@@ -201,7 +201,10 @@ object(Name, Opts) ->
     G#object{fields = Fields, opts = NOpts}.
 
 rpc(Name0, Opts) ->
-    Name = binary:list_to_bin([get(prefix), $., Name0]),
+    Name = case get(prefix) of
+               <<"">> -> Name0;
+               Prefix -> binary:list_to_bin([Prefix, $., Name0])
+           end,
     R = ?O2R(#rpc{name = Name}, rpc, Opts),
     {Fields, NOpts} = elements(R#rpc.opts),
     R#rpc{fields = Fields, opts = NOpts}.
