@@ -58,7 +58,12 @@ hrl(Path, Ms = {Module, _Namespace, _}) ->
     file:write_file(F, hrl(Ms)).
 
 hrl(Ms) ->
-    io_lib:format("typespec() -> ~n~s.~n", [pretty_print(Ms)]).
+    groupings_as_records(Ms),
+    io_lib:format("typespec() -> ~n~s.~n", [pretty_print(Ms)]) ++ "\n" ++ groupings_as_records(Ms).
+
+groupings_as_records({_Module, _Namespace, TypeSpec}) ->
+    Records = [object_to_record(Obj) || Obj = #object{} <- TypeSpec],
+    Records.
 
 pretty_print(ModuleSpec) ->
     io_lib_pretty:print(ModuleSpec, fun record_definition/2).
@@ -85,6 +90,9 @@ pretty_print_rpc(ModuleSpec) ->
 ?RD('case');
 record_definition(_, _) -> no.
 
+object_to_record(Obj) ->
+    Fields = string:join([io_lib:format("\t'~s'", [element(2, Field)]) || Field <- Obj#object.fields], ",\n"),
+    io_lib:format("-record('~s', {~n~s~n}).~n", [Obj#object.name, Fields]).
 
 rpcfind(input, #rpc{input = Input}) ->
     Input;
