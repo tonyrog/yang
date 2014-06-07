@@ -184,6 +184,14 @@ validate_item(N, V, _, Type = {type, _, T, _})
 validate_item(_, {V}, _, {<<"object">>, _})
   when is_list(V) ->
     {V};
+validate_item(N, V, _, Type = {<<"date-and-time">>, _})
+  when is_list(V); is_binary(V) ->
+    case string_to_datetime(V) of
+        {ok, _} ->
+            V;
+        error ->
+            invalid_item(N, V, Type)
+    end;
 validate_item(N, V, _, Type = {<<"timestamp">>, _})
   when is_list(V); is_binary(V) ->
     case string_to_datetime(V) of
@@ -192,7 +200,6 @@ validate_item(N, V, _, Type = {<<"timestamp">>, _})
         error ->
             invalid_item(N, V, Type)
     end;
-
 validate_item(N, V, Depth, Type = {<<"union">>, Types}) when is_list(Types) ->
     Ok = lists:foldl(
         fun
