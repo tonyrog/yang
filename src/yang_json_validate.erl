@@ -12,7 +12,7 @@ validate(ModuleSpec, Type, Depth, Doc) ->
 
 validate_type(Type, Depth, Doc) ->
     validate_(Type, Depth, Doc).
-    
+
 %%------------------------------
 %% internal functions
 %%------------------------------
@@ -97,9 +97,9 @@ validate_item(_, {V}, Depth, #struct{fields = Fields})
 
 validate_item(N, V, _, Type = #enumeration{enum = Enum}) ->
     case lists:member(V, Enum) of
-        true -> 
+        true ->
             V;
-        _    -> 
+        _    ->
             invalid_item(N, V, Type)
     end;
 
@@ -169,7 +169,7 @@ validate_item(_, V, _, {<<"number">>, _})
   when is_number(V) -> V;
 validate_item(_, V, _, {<<"integer">>, _})
   when is_integer(V) -> V;
-validate_item(N, V, _, Type = {type, _, T, _}) 
+validate_item(N, V, _, Type = {type, _, T, _})
        when T =:= <<"ipv4-address">>; T =:= <<"ipv6-address">> ->
     case inet_parse:address(binary_to_list(V)) of
         {ok, _} ->
@@ -184,19 +184,15 @@ validate_item(N, V, _, Type = {type, _, T, _})
 validate_item(_, {V}, _, {<<"object">>, _})
   when is_list(V) ->
     {V};
-validate_item(N, V, _, Type = {<<"date-and-time">>, _})
-  when is_list(V); is_binary(V) ->
+validate_item(N, V, _, Type = {TimeType, _})
+  when (is_list(V) or is_binary(V)) andalso
+       (TimeType == <<"date-and-time">> orelse TimeType == <<"timestamp">> orelse TimeType == <<"iso_date">>) ->
     case string_to_datetime(V) of
-        {ok, _} ->
-            V;
-        error ->
-            invalid_item(N, V, Type)
-    end;
-validate_item(N, V, _, Type = {<<"timestamp">>, _})
-  when is_list(V); is_binary(V) ->
-    case string_to_datetime(V) of
-        {ok, _} ->
-            V;
+        {ok, DateTime} ->
+            case TimeType == <<"iso_date">> of
+                true -> DateTime;
+                false -> V
+            end;
         error ->
             invalid_item(N, V, Type)
     end;
