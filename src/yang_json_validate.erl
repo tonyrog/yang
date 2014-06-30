@@ -1,7 +1,7 @@
 -module(yang_json_validate).
 
 -export([validate/3, validate/4, validate_type/3, string_to_datetime/1]).
-
+-compile([export_all]).
 -include("typespec.hrl").
 
 validate(ModuleSpec, Type, Doc) ->
@@ -66,7 +66,8 @@ validate_item(_, V, 0, _) -> V;
 %%------------------------------
 %% mandatory handling
 %%------------------------------
-
+validate_item(_N, V, _, _Type = {<<"any">>, _}) ->
+    V;
 validate_item(_, false, _, #field{mandatory = false, default = undefined}) ->
     undefined;
 validate_item(_, false, _, #field{mandatory = false, name = N, default = Default}) ->
@@ -215,9 +216,6 @@ validate_item(N, V, Depth, Type = {<<"union">>, Types}) when is_list(Types) ->
         _ ->
             Ok
     end;
-
-validate_item(_N, V, _, _Type = {<<"any">>, _}) ->
-    V;
 
 validate_item(N, V, _, Type) ->
     invalid_item(N, V, Type).
