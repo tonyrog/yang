@@ -1,6 +1,12 @@
 yang
 ====
 
+Version 0.1.2 - 26 Aug 2014
+---------------------------
+
+* fixes any check
+* added backwards compatibility for iso_time
+
 Version 0.1.1 - 07 Jun 2013
 ---------------------------
 
