@@ -66,6 +66,10 @@ validate_item(_, V, 0, _) -> V;
 %%------------------------------
 %% mandatory handling
 %%------------------------------
+validate_item(_, {_, null}, _, #field{mandatory = false, default = undefined}) ->
+    undefined;
+validate_item(_, {_, null}, _, #field{mandatory = false, name = N, default = Default}) ->
+    {N, Default};
 validate_item(_N, V, _, _Type = {<<"any">>, _}) ->
     V;
 validate_item(_, false, _, #field{mandatory = false, default = undefined}) ->
