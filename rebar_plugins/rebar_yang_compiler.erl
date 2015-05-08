@@ -14,8 +14,11 @@ pre_compile(Config, _Appfile) ->
     Opts = rebar_config:get(Config, yang_opts, []),
     YangDir = proplists:get_value(yang_dir, Opts, ?YANGDIR),
     YangBuildDir = proplists:get_value(yang_build_dir, Opts, ?YANGBUILDDIR),
-    rebar_base_compiler:run(Config, filelib:wildcard(filename:join([YangDir, "*.yang"])),
-                            YangDir, ".yang", YangBuildDir, ".hrl", fun compile_yang/3).
+    NewConfig = rebar_config:set(Config, erl_opts, 
+                                 [{i, YangBuildDir}] ++ rebar_utils:erl_opts(Config)),
+    rebar_base_compiler:run(NewConfig, filelib:wildcard(filename:join([YangDir, "*.yang"])),
+                            YangDir, ".yang", YangBuildDir, ".hrl", fun compile_yang/3),
+    {ok, NewConfig}.
 
 -spec clean(rebar_config:config(), file:filename()) -> ok.
 clean(Config, _AppFile) ->
